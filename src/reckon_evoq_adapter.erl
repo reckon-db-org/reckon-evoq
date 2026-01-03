@@ -9,7 +9,7 @@
 %% - Load balancing across workers
 %% - High availability
 %%
-%% @author Reckon-DB
+%% @author rgfaber
 
 -module(reckon_evoq_adapter).
 

@@ -2,7 +2,7 @@
 %%
 %% Contains macros and type definitions specific to the reckon-db adapter.
 %%
-%% @author Reckon-DB
+%% @author rgfaber
 
 -ifndef(RECKON_EVOQ_HRL).
 -define(RECKON_EVOQ_HRL, true).
