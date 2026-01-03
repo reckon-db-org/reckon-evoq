@@ -1,9 +1,9 @@
-%% @doc Gateway adapter implementation for erl-evoq
+%% @doc Gateway adapter implementation for evoq
 %%
 %% Implements the adapter behaviors using esdb_gater_api to route
 %% all operations through the reckon-gater load balancer.
 %%
-%% This adapter ensures that erl-evoq never directly calls reckon-db
+%% This adapter ensures that evoq never directly calls reckon-db
 %% modules, instead routing through the gateway for:
 %% - Automatic retry with exponential backoff
 %% - Load balancing across workers
@@ -13,7 +13,7 @@
 
 -module(reckon_evoq_adapter).
 
-%% Implement behaviors defined in erl-evoq
+%% Implement behaviors defined in evoq
 -behaviour(evoq_adapter).
 -behaviour(evoq_snapshot_adapter).
 -behaviour(evoq_subscription_adapter).

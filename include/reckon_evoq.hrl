@@ -7,7 +7,7 @@
 -ifndef(RECKON_EVOQ_HRL).
 -define(RECKON_EVOQ_HRL, true).
 
-%% Include shared types from erl-esdb-gater (event, snapshot, subscription)
+%% Include shared types from reckon-gater (event, snapshot, subscription)
 -include_lib("reckon_gater/include/esdb_gater_types.hrl").
 
 %%====================================================================
