@@ -25,7 +25,7 @@ Add to your `rebar.config`:
 
 ```erlang
 {deps, [
-    {reckon_evoq, "~> 0.3.0"}
+    {reckon_evoq, "~> 1.0"}
 ]}.
 ```
 
@@ -33,9 +33,9 @@ Add to your `rebar.config`:
 
 This adapter requires:
 
-- **evoq** >= 0.3.0 - CQRS/ES framework with behavior definitions
-- **reckon-gater** >= 0.6.2 - Gateway API for load balancing and retry
-- **reckon-db** >= 0.4.3 - The underlying event store (must be running)
+- **evoq** >= 1.0.0 - CQRS/ES framework with behavior definitions
+- **reckon-gater** >= 1.0.0 - Gateway API for load balancing and retry
+- **reckon-db** >= 1.0.0 - The underlying event store (must be running)
 
 ## Quick Start
 
@@ -163,14 +163,7 @@ reckon_evoq_adapter:get_by_name(StoreId, SubscriptionName).
 
 ## Architecture
 
-```
-+-------------+     +------------------+     +----------------+     +-----------+
-|  evoq   | --> | reckon-evoq    | --> | reckon-gater | --> | reckon-db  |
-| (Framework) |     | (This Adapter)   |     | (Gateway/LB)   |     | (Storage) |
-+-------------+     +------------------+     +----------------+     +-----------+
-                    Implements behaviors    Load balancing,        Khepri/Ra
-                    from evoq           retry, failover        Raft consensus
-```
+![reckon-evoq Architecture](assets/architecture.svg)
 
 ## Local Development
 

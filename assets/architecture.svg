@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4b5563"/>
+    </marker>
+    <linearGradient id="frameworkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1"/>
+    </linearGradient>
+    <linearGradient id="gatewayGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1"/>
+    </linearGradient>
+    <linearGradient id="storeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#7c3aed;stop-opacity:1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Title -->
+  <text x="400" y="25" font-family="system-ui, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#1f2937">reckon-evoq Architecture</text>
+  <text x="400" y="45" font-family="system-ui, sans-serif" font-size="11" text-anchor="middle" fill="#6b7280">Adapter connecting evoq CQRS/ES framework to reckon-db event store</text>
+
+  <!-- evoq (Framework) -->
+  <rect x="30" y="80" width="140" height="70" rx="5" fill="url(#frameworkGrad)"/>
+  <text x="100" y="110" font-family="system-ui, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="white">evoq</text>
+  <text x="100" y="128" font-family="system-ui, sans-serif" font-size="9" text-anchor="middle" fill="#bfdbfe">CQRS/ES Framework</text>
+  <text x="100" y="142" font-family="system-ui, sans-serif" font-size="8" text-anchor="middle" fill="#93c5fd">Aggregates, Handlers</text>
+
+  <!-- Arrow 1 -->
+  <line x1="170" y1="115" x2="210" y2="115" stroke="#4b5563" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- reckon-evoq (This Adapter) -->
+  <rect x="220" y="80" width="140" height="70" rx="5" fill="url(#frameworkGrad)"/>
+  <text x="290" y="110" font-family="system-ui, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="white">reckon-evoq</text>
+  <text x="290" y="128" font-family="system-ui, sans-serif" font-size="9" text-anchor="middle" fill="#bfdbfe">Adapter Layer</text>
+  <text x="290" y="142" font-family="system-ui, sans-serif" font-size="8" text-anchor="middle" fill="#93c5fd">Implements behaviors</text>
+
+  <!-- Arrow 2 -->
+  <line x1="360" y1="115" x2="400" y2="115" stroke="#4b5563" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- reckon-gater (Gateway) -->
+  <rect x="410" y="80" width="140" height="70" rx="5" fill="url(#gatewayGrad)"/>
+  <text x="480" y="110" font-family="system-ui, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="white">reckon-gater</text>
+  <text x="480" y="128" font-family="system-ui, sans-serif" font-size="9" text-anchor="middle" fill="#a7f3d0">Gateway / Load Balancer</text>
+  <text x="480" y="142" font-family="system-ui, sans-serif" font-size="8" text-anchor="middle" fill="#6ee7b7">Retry, Failover</text>
+
+  <!-- Arrow 3 -->
+  <line x1="550" y1="115" x2="590" y2="115" stroke="#4b5563" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- reckon-db (Storage) -->
+  <rect x="600" y="80" width="140" height="70" rx="5" fill="url(#storeGrad)"/>
+  <text x="670" y="110" font-family="system-ui, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="white">reckon-db</text>
+  <text x="670" y="128" font-family="system-ui, sans-serif" font-size="9" text-anchor="middle" fill="#ddd6fe">Event Store</text>
+  <text x="670" y="142" font-family="system-ui, sans-serif" font-size="8" text-anchor="middle" fill="#c4b5fd">Khepri/Ra Consensus</text>
+
+  <!-- Bottom labels -->
+  <text x="100" y="175" font-family="system-ui, sans-serif" font-size="8" text-anchor="middle" fill="#6b7280">Your Application</text>
+  <text x="290" y="175" font-family="system-ui, sans-serif" font-size="8" text-anchor="middle" fill="#6b7280">This Package</text>
+  <text x="480" y="175" font-family="system-ui, sans-serif" font-size="8" text-anchor="middle" fill="#6b7280">Network Layer</text>
+  <text x="670" y="175" font-family="system-ui, sans-serif" font-size="8" text-anchor="middle" fill="#6b7280">Distributed Storage</text>
+</svg>
