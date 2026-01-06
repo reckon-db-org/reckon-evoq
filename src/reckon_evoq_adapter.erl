@@ -18,8 +18,13 @@
 -behaviour(evoq_snapshot_adapter).
 -behaviour(evoq_subscription_adapter).
 
-%% Use shared types from reckon-gater
+%% reckon-gater types (what the backend uses internally)
+%% Must be included FIRST to define macros
 -include_lib("reckon_gater/include/esdb_gater_types.hrl").
+
+%% evoq types (what we return to evoq consumers)
+%% Included second - uses ifndef guards for shared macros
+-include_lib("evoq/include/evoq_types.hrl").
 
 %%====================================================================
 %% evoq_adapter callbacks (Event Store Operations)
@@ -79,25 +84,25 @@ append(StoreId, StreamId, ExpectedVersion, Events) ->
 
 %% @doc Read events from a stream via gateway.
 -spec read(atom(), binary(), non_neg_integer(), pos_integer(), forward | backward) ->
-    {ok, [event()]} | {error, term()}.
+    {ok, [evoq_event()]} | {error, term()}.
 read(StoreId, StreamId, StartVersion, Count, Direction) ->
     case esdb_gater_api:get_events(StoreId, StreamId, StartVersion, Count, Direction) of
         {ok, Events} ->
-            {ok, Events};
+            {ok, events_to_evoq(Events)};
         {error, _} = Error ->
             Error
     end.
 
 %% @doc Read all events from a stream via gateway.
 -spec read_all(atom(), binary(), forward | backward) ->
-    {ok, [event()]} | {error, term()}.
+    {ok, [evoq_event()]} | {error, term()}.
 read_all(StoreId, StreamId, Direction) ->
     %% Read in batches of 1000 and accumulate
     read_all_batched(StoreId, StreamId, 0, Direction, []).
 
 %% @private Read all events in batches
--spec read_all_batched(atom(), binary(), non_neg_integer(), forward | backward, [event()]) ->
-    {ok, [event()]} | {error, term()}.
+-spec read_all_batched(atom(), binary(), non_neg_integer(), forward | backward, [evoq_event()]) ->
+    {ok, [evoq_event()]} | {error, term()}.
 read_all_batched(StoreId, StreamId, StartVersion, Direction, Acc) ->
     BatchSize = 1000,
     case read(StoreId, StreamId, StartVersion, BatchSize, Direction) of
@@ -120,13 +125,13 @@ read_all_batched(StoreId, StreamId, StartVersion, Direction, Acc) ->
 %% Uses the server-side native Khepri filtering for efficient type-based queries.
 %% Events are filtered at the database level, avoiding loading all events into memory.
 -spec read_by_event_types(atom(), [binary()], pos_integer()) ->
-    {ok, [event()]} | {error, term()}.
+    {ok, [evoq_event()]} | {error, term()}.
 read_by_event_types(StoreId, EventTypes, BatchSize) ->
     case esdb_gater_api:read_by_event_types(StoreId, EventTypes, BatchSize) of
         {ok, {ok, Events}} when is_list(Events) ->
-            {ok, Events};
+            {ok, events_to_evoq(Events)};
         {ok, Events} when is_list(Events) ->
-            {ok, Events};
+            {ok, events_to_evoq(Events)};
         {error, _} = Error ->
             Error
     end.
@@ -180,7 +185,7 @@ save(StoreId, StreamId, Version, Data, Metadata) ->
 
 %% @doc Read the latest snapshot via gateway.
 -spec read(atom(), binary()) ->
-    {ok, snapshot()} | {error, not_found | term()}.
+    {ok, evoq_snapshot()} | {error, not_found | term()}.
 read(StoreId, StreamId) ->
     %% List all snapshots and get the latest one
     case esdb_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
@@ -200,18 +205,18 @@ read(StoreId, StreamId) ->
                 #{version => -1},
                 Snapshots
             ),
-            {ok, map_to_snapshot(StreamId, Latest)};
+            {ok, map_to_evoq_snapshot(StreamId, Latest)};
         {error, _} = Error ->
             Error
     end.
 
 %% @doc Read snapshot at specific version via gateway.
 -spec read_at_version(atom(), binary(), non_neg_integer()) ->
-    {ok, snapshot()} | {error, not_found | term()}.
+    {ok, evoq_snapshot()} | {error, not_found | term()}.
 read_at_version(StoreId, StreamId, Version) ->
     case esdb_gater_api:read_snapshot(StoreId, StreamId, StreamId, Version) of
         {ok, SnapshotMap} ->
-            {ok, map_to_snapshot(StreamId, SnapshotMap#{version => Version})};
+            {ok, map_to_evoq_snapshot(StreamId, SnapshotMap#{version => Version})};
         {error, _} = Error ->
             Error
     end.
@@ -249,10 +254,10 @@ list_versions(StoreId, StreamId) ->
             Error
     end.
 
-%% @private Convert map to snapshot record
--spec map_to_snapshot(binary(), map()) -> snapshot().
-map_to_snapshot(StreamId, Map) ->
-    #snapshot{
+%% @private Convert map to evoq snapshot record
+-spec map_to_evoq_snapshot(binary(), map()) -> evoq_snapshot().
+map_to_evoq_snapshot(StreamId, Map) ->
+    #evoq_snapshot{
         stream_id = StreamId,
         version = maps:get(version, Map, 0),
         data = maps:get(data, Map, #{}),
@@ -265,7 +270,7 @@ map_to_snapshot(StreamId, Map) ->
 %%====================================================================
 
 %% @doc Subscribe to events via gateway.
--spec subscribe(atom(), subscription_type(), binary() | map(), binary(), map()) ->
+-spec subscribe(atom(), evoq_subscription_type(), binary() | map(), binary(), map()) ->
     {ok, binary()} | {error, term()}.
 subscribe(StoreId, Type, Selector, SubscriptionName, Opts) ->
     StartFrom = maps:get(start_from, Opts, 0),
@@ -329,11 +334,11 @@ extract_checkpoint(SubMap) ->
     end.
 
 %% @doc List subscriptions via gateway.
--spec list(atom()) -> {ok, [subscription()]} | {error, term()}.
+-spec list(atom()) -> {ok, [evoq_subscription()]} | {error, term()}.
 list(StoreId) ->
     case esdb_gater_api:get_subscriptions(StoreId) of
         {ok, Subscriptions} ->
-            Records = [map_to_subscription(S) || S <- Subscriptions],
+            Records = [map_to_evoq_subscription(S) || S <- Subscriptions],
             {ok, Records};
         {error, _} = Error ->
             Error
@@ -341,12 +346,12 @@ list(StoreId) ->
 
 %% @doc Get subscription by name via gateway.
 -spec get_by_name(atom(), binary()) ->
-    {ok, subscription()} | {error, not_found | term()}.
+    {ok, evoq_subscription()} | {error, not_found | term()}.
 get_by_name(StoreId, SubscriptionName) ->
     case list(StoreId) of
         {ok, Subscriptions} ->
             case lists:filter(
-                fun(#subscription{subscription_name = N}) -> N =:= SubscriptionName end,
+                fun(#evoq_subscription{subscription_name = N}) -> N =:= SubscriptionName end,
                 Subscriptions
             ) of
                 [Sub | _] -> {ok, Sub};
@@ -361,11 +366,47 @@ get_by_name(StoreId, SubscriptionName) ->
 %%====================================================================
 
 %% @private Map subscription type to gateway type atom
--spec subscription_type_to_gater(subscription_type()) -> atom().
+-spec subscription_type_to_gater(evoq_subscription_type()) -> atom().
 subscription_type_to_gater(stream) -> by_stream;
 subscription_type_to_gater(event_type) -> by_event_type;
 subscription_type_to_gater(event_pattern) -> by_event_pattern;
 subscription_type_to_gater(event_payload) -> by_event_payload.
+
+%%====================================================================
+%% Type Translation (reckon_gater -> evoq)
+%%====================================================================
+
+%% @private Translate reckon_gater event to evoq event
+-spec event_to_evoq(event()) -> evoq_event().
+event_to_evoq(#event{
+    event_id = EventId,
+    event_type = EventType,
+    stream_id = StreamId,
+    version = Version,
+    data = Data,
+    metadata = Metadata,
+    timestamp = Timestamp,
+    epoch_us = EpochUs,
+    data_content_type = DataContentType,
+    metadata_content_type = MetadataContentType
+}) ->
+    #evoq_event{
+        event_id = EventId,
+        event_type = EventType,
+        stream_id = StreamId,
+        version = Version,
+        data = Data,
+        metadata = Metadata,
+        timestamp = Timestamp,
+        epoch_us = EpochUs,
+        data_content_type = DataContentType,
+        metadata_content_type = MetadataContentType
+    }.
+
+%% @private Translate a list of reckon_gater events to evoq events
+-spec events_to_evoq([event()]) -> [evoq_event()].
+events_to_evoq(Events) ->
+    [event_to_evoq(E) || E <- Events].
 
 %% @private Generate subscription ID
 -spec generate_subscription_id(atom(), binary()) -> binary().
@@ -385,10 +426,10 @@ parse_subscription_id(SubscriptionId) ->
             {error, invalid_id}
     end.
 
-%% @private Convert map to subscription record
--spec map_to_subscription(map()) -> subscription().
-map_to_subscription(Map) ->
-    #subscription{
+%% @private Convert map to evoq subscription record
+-spec map_to_evoq_subscription(map()) -> evoq_subscription().
+map_to_evoq_subscription(Map) ->
+    #evoq_subscription{
         id = maps:get(id, Map, undefined),
         type = maps:get(type, Map, stream),
         selector = maps:get(selector, Map, <<>>),

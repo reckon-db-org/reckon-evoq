@@ -5,6 +5,18 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-01-06
+
+### Changed
+
+- **Type translation**: Adapter now returns evoq types (`evoq_event()`, `evoq_snapshot()`,
+  `evoq_subscription()`) instead of reckon_gater types, enabling evoq to be truly
+  independent of any specific storage backend
+
+### Dependencies
+
+- Updated evoq to 1.0.3 (macro guard compatibility fix)
+
 ## [1.0.2] - 2026-01-03
 
 ### Added
