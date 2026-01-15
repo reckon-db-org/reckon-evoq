@@ -74,7 +74,7 @@
 %% @doc Append events to a stream via gateway.
 %%
 %% Events from evoq have a flat structure, but reckon_db expects events
-%% with a nested `data` field. This function transforms the events to
+%% with a nested data field. This function transforms the events to
 %% the format expected by reckon_db.
 -spec append(atom(), binary(), integer(), [map()]) ->
     {ok, non_neg_integer()} | {error, term()}.
@@ -423,7 +423,7 @@ events_to_evoq(Events) ->
 %% @private Transform an evoq event (flat map) to reckon_db format (nested data)
 %%
 %% Evoq events are flat maps with all fields at the top level.
-%% ReckonDB expects events with a nested `data` field.
+%% ReckonDB expects events with a nested data field.
 %%
 %% Input (evoq):  #{event_type => artifact_installed, name => "...", metadata => #{}}
 %% Output (reckon_db): #{event_type => artifact_installed, data => #{name => "..."}, metadata => #{}}
