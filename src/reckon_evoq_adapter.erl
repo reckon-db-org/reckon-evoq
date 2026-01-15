@@ -72,10 +72,16 @@
 %%====================================================================
 
 %% @doc Append events to a stream via gateway.
+%%
+%% Events from evoq have a flat structure, but reckon_db expects events
+%% with a nested `data` field. This function transforms the events to
+%% the format expected by reckon_db.
 -spec append(atom(), binary(), integer(), [map()]) ->
     {ok, non_neg_integer()} | {error, term()}.
 append(StoreId, StreamId, ExpectedVersion, Events) ->
-    case esdb_gater_api:append_events(StoreId, StreamId, ExpectedVersion, Events) of
+    %% Transform events to reckon_db format
+    TransformedEvents = [evoq_to_reckon_event(E) || E <- Events],
+    case esdb_gater_api:append_events(StoreId, StreamId, ExpectedVersion, TransformedEvents) of
         {ok, NewVersion} ->
             {ok, NewVersion};
         {error, _} = Error ->
@@ -83,12 +89,18 @@ append(StoreId, StreamId, ExpectedVersion, Events) ->
     end.
 
 %% @doc Read events from a stream via gateway.
+%%
+%% For event sourcing, a non-existent stream just means no events yet,
+%% so we translate stream_not_found to an empty list.
 -spec read(atom(), binary(), non_neg_integer(), pos_integer(), forward | backward) ->
     {ok, [evoq_event()]} | {error, term()}.
 read(StoreId, StreamId, StartVersion, Count, Direction) ->
     case esdb_gater_api:get_events(StoreId, StreamId, StartVersion, Count, Direction) of
         {ok, Events} ->
             {ok, events_to_evoq(Events)};
+        {error, {stream_not_found, _}} ->
+            %% Non-existent stream = no events yet (valid for new aggregates)
+            {ok, []};
         {error, _} = Error ->
             Error
     end.
@@ -407,6 +419,48 @@ event_to_evoq(#event{
 -spec events_to_evoq([event()]) -> [evoq_event()].
 events_to_evoq(Events) ->
     [event_to_evoq(E) || E <- Events].
+
+%% @private Transform an evoq event (flat map) to reckon_db format (nested data)
+%%
+%% Evoq events are flat maps with all fields at the top level.
+%% ReckonDB expects events with a nested `data` field.
+%%
+%% Input (evoq):  #{event_type => artifact_installed, name => "...", metadata => #{}}
+%% Output (reckon_db): #{event_type => artifact_installed, data => #{name => "..."}, metadata => #{}}
+-spec evoq_to_reckon_event(map()) -> map().
+evoq_to_reckon_event(Event) ->
+    %% Extract fields that should be at top level
+    EventType = maps:get(event_type, Event, undefined),
+    Metadata = maps:get(metadata, Event, #{}),
+    CorrelationId = maps:get(correlation_id, Event, undefined),
+    CausationId = maps:get(causation_id, Event, undefined),
+    EventId = maps:get(event_id, Event, undefined),
+
+    %% Build metadata with causation/correlation if present
+    MetadataWithCausation = case {CorrelationId, CausationId} of
+        {undefined, undefined} -> Metadata;
+        {Corr, undefined} -> Metadata#{correlation_id => Corr};
+        {undefined, Caus} -> Metadata#{causation_id => Caus};
+        {Corr, Caus} -> Metadata#{correlation_id => Corr, causation_id => Caus}
+    end,
+
+    %% Everything else goes into data
+    TopLevelKeys = [event_type, metadata, correlation_id, causation_id, event_id,
+                    data_content_type, metadata_content_type],
+    Data = maps:without(TopLevelKeys, Event),
+
+    %% Build reckon_db event
+    BaseEvent = #{
+        event_type => EventType,
+        data => Data,
+        metadata => MetadataWithCausation
+    },
+
+    %% Add optional event_id if present
+    case EventId of
+        undefined -> BaseEvent;
+        Id -> BaseEvent#{event_id => Id}
+    end.
 
 %% @private Generate subscription ID
 -spec generate_subscription_id(atom(), binary()) -> binary().
