@@ -5,6 +5,33 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] - 2026-01-19
+
+### Changed
+
+- **Dependencies**: Relaxed evoq version constraint from exact `1.1.0` to `~> 1.1` to allow
+  compatibility with evoq 1.1.x releases
+
+## [1.0.7] - 2026-01-09
+
+### Fixed
+
+- **Documentation**: Removed EDoc-incompatible backticks from source documentation
+
+## [1.0.6] - 2026-01-09
+
+### Fixed
+
+- **Empty streams**: `read/5` now correctly returns `{ok, []}` for new/empty streams
+  instead of `{error, {:stream_not_found, StreamId}}`
+- **Event format**: Fixed event format transformation between reckon_gater and evoq types
+
+## [1.0.5] - 2026-01-08
+
+### Changed
+
+- **Documentation**: Added Buy Me a Coffee badge to README
+
 ## [1.0.4] - 2026-01-08
 
 ### Dependencies
