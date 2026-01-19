@@ -96,8 +96,13 @@ append(StoreId, StreamId, ExpectedVersion, Events) ->
     {ok, [evoq_event()]} | {error, term()}.
 read(StoreId, StreamId, StartVersion, Count, Direction) ->
     case esdb_gater_api:get_events(StoreId, StreamId, StartVersion, Count, Direction) of
-        {ok, Events} ->
+        {ok, Events} when is_list(Events) ->
             {ok, events_to_evoq(Events)};
+        %% Handle double-wrapped error (gateway bug workaround)
+        {ok, {error, {stream_not_found, _}}} ->
+            {ok, []};
+        {ok, {error, _} = Error} ->
+            Error;
         {error, {stream_not_found, _}} ->
             %% Non-existent stream = no events yet (valid for new aggregates)
             {ok, []};

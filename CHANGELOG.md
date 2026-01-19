@@ -5,6 +5,14 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] - 2026-01-19
+
+### Fixed
+
+- **Double-wrapped errors**: Handle edge case where gateway returns `{ok, {error, ...}}`
+  instead of `{error, ...}` for stream_not_found errors
+- Added guard `is_list(Events)` to `read/5` to catch incorrect responses
+
 ## [1.0.8] - 2026-01-19
 
 ### Changed
