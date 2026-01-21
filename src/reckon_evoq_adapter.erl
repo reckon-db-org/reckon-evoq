@@ -35,6 +35,8 @@
     read/5,
     read_all/3,
     read_by_event_types/3,
+    read_by_tags/3,
+    read_by_tags/4,
     version/2,
     exists/2,
     list_streams/1,
@@ -145,6 +147,49 @@ read_all_batched(StoreId, StreamId, StartVersion, Direction, Acc) ->
     {ok, [evoq_event()]} | {error, term()}.
 read_by_event_types(StoreId, EventTypes, BatchSize) ->
     case esdb_gater_api:read_by_event_types(StoreId, EventTypes, BatchSize) of
+        {ok, {ok, Events}} when is_list(Events) ->
+            {ok, events_to_evoq(Events)};
+        {ok, Events} when is_list(Events) ->
+            {ok, events_to_evoq(Events)};
+        {error, _} = Error ->
+            Error
+    end.
+
+%% @doc Read events by tags via gateway (default: ANY match, batch_size from parameter).
+%%
+%% Tags provide cross-stream querying for the process-centric model.
+%% Use this to find all events related to specific participants.
+%%
+%% Example:
+%%   {ok, Events} = reckon_evoq_adapter:read_by_tags(my_store, [<<"student:456">>], 1000).
+%%
+%% @see read_by_tags/4 for match mode options
+-spec read_by_tags(atom(), [binary()], pos_integer()) ->
+    {ok, [evoq_event()]} | {error, term()}.
+read_by_tags(StoreId, Tags, BatchSize) ->
+    read_by_tags(StoreId, Tags, any, BatchSize).
+
+%% @doc Read events by tags via gateway with match mode.
+%%
+%% Tags provide cross-stream querying for the process-centric model.
+%% Events are filtered at the database level.
+%%
+%% Match modes:
+%%   any - Return events matching ANY of the tags (union)
+%%   all - Return events matching ALL of the tags (intersection)
+%%
+%% Examples:
+%%   %% Find all events for a student (across all courses)
+%%   {ok, Events} = reckon_evoq_adapter:read_by_tags(Store,
+%%       [<<"student:456">>], any, 1000).
+%%
+%%   %% Find events for student 456 in course CS101 specifically
+%%   {ok, Events} = reckon_evoq_adapter:read_by_tags(Store,
+%%       [<<"student:456">>, <<"course:CS101">>], all, 1000).
+-spec read_by_tags(atom(), [binary()], any | all, pos_integer()) ->
+    {ok, [evoq_event()]} | {error, term()}.
+read_by_tags(StoreId, Tags, Match, BatchSize) ->
+    case esdb_gater_api:read_by_tags(StoreId, Tags, #{match => Match, batch_size => BatchSize}) of
         {ok, {ok, Events}} when is_list(Events) ->
             {ok, events_to_evoq(Events)};
         {ok, Events} when is_list(Events) ->
@@ -387,7 +432,8 @@ get_by_name(StoreId, SubscriptionName) ->
 subscription_type_to_gater(stream) -> by_stream;
 subscription_type_to_gater(event_type) -> by_event_type;
 subscription_type_to_gater(event_pattern) -> by_event_pattern;
-subscription_type_to_gater(event_payload) -> by_event_payload.
+subscription_type_to_gater(event_payload) -> by_event_payload;
+subscription_type_to_gater(tags) -> by_tags.
 
 %%====================================================================
 %% Type Translation (reckon_gater -> evoq)
@@ -402,6 +448,7 @@ event_to_evoq(#event{
     version = Version,
     data = Data,
     metadata = Metadata,
+    tags = Tags,
     timestamp = Timestamp,
     epoch_us = EpochUs,
     data_content_type = DataContentType,
@@ -414,6 +461,7 @@ event_to_evoq(#event{
         version = Version,
         data = Data,
         metadata = Metadata,
+        tags = Tags,
         timestamp = Timestamp,
         epoch_us = EpochUs,
         data_content_type = DataContentType,
@@ -430,13 +478,14 @@ events_to_evoq(Events) ->
 %% Evoq events are flat maps with all fields at the top level.
 %% ReckonDB expects events with a nested data field.
 %%
-%% Input (evoq):  #{event_type => artifact_installed, name => "...", metadata => #{}}
-%% Output (reckon_db): #{event_type => artifact_installed, data => #{name => "..."}, metadata => #{}}
+%% Input (evoq):  #{event_type => artifact_installed, name => "...", metadata => #{}, tags => [...]}
+%% Output (reckon_db): #{event_type => artifact_installed, data => #{name => "..."}, metadata => #{}, tags => [...]}
 -spec evoq_to_reckon_event(map()) -> map().
 evoq_to_reckon_event(Event) ->
     %% Extract fields that should be at top level
     EventType = maps:get(event_type, Event, undefined),
     Metadata = maps:get(metadata, Event, #{}),
+    Tags = maps:get(tags, Event, undefined),
     CorrelationId = maps:get(correlation_id, Event, undefined),
     CausationId = maps:get(causation_id, Event, undefined),
     EventId = maps:get(event_id, Event, undefined),
@@ -449,8 +498,8 @@ evoq_to_reckon_event(Event) ->
         {Corr, Caus} -> Metadata#{correlation_id => Corr, causation_id => Caus}
     end,
 
-    %% Everything else goes into data
-    TopLevelKeys = [event_type, metadata, correlation_id, causation_id, event_id,
+    %% Everything else goes into data (excluding top-level fields)
+    TopLevelKeys = [event_type, metadata, tags, correlation_id, causation_id, event_id,
                     data_content_type, metadata_content_type],
     Data = maps:without(TopLevelKeys, Event),
 
@@ -461,10 +510,17 @@ evoq_to_reckon_event(Event) ->
         metadata => MetadataWithCausation
     },
 
+    %% Add optional tags if present
+    EventWithTags = case Tags of
+        undefined -> BaseEvent;
+        [] -> BaseEvent;  %% Don't include empty tags
+        TagList when is_list(TagList) -> BaseEvent#{tags => TagList}
+    end,
+
     %% Add optional event_id if present
     case EventId of
-        undefined -> BaseEvent;
-        Id -> BaseEvent#{event_id => Id}
+        undefined -> EventWithTags;
+        Id -> EventWithTags#{event_id => Id}
     end.
 
 %% @private Generate subscription ID
