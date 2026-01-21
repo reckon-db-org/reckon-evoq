@@ -155,15 +155,10 @@ read_by_event_types(StoreId, EventTypes, BatchSize) ->
             Error
     end.
 
-%% @doc Read events by tags via gateway (default: ANY match, batch_size from parameter).
+%% @doc Read events by tags via gateway (default: ANY match).
 %%
 %% Tags provide cross-stream querying for the process-centric model.
 %% Use this to find all events related to specific participants.
-%%
-%% Example:
-%%   {ok, Events} = reckon_evoq_adapter:read_by_tags(my_store, [<<"student:456">>], 1000).
-%%
-%% @see read_by_tags/4 for match mode options
 -spec read_by_tags(atom(), [binary()], pos_integer()) ->
     {ok, [evoq_event()]} | {error, term()}.
 read_by_tags(StoreId, Tags, BatchSize) ->
@@ -177,15 +172,6 @@ read_by_tags(StoreId, Tags, BatchSize) ->
 %% Match modes:
 %%   any - Return events matching ANY of the tags (union)
 %%   all - Return events matching ALL of the tags (intersection)
-%%
-%% Examples:
-%%   %% Find all events for a student (across all courses)
-%%   {ok, Events} = reckon_evoq_adapter:read_by_tags(Store,
-%%       [<<"student:456">>], any, 1000).
-%%
-%%   %% Find events for student 456 in course CS101 specifically
-%%   {ok, Events} = reckon_evoq_adapter:read_by_tags(Store,
-%%       [<<"student:456">>, <<"course:CS101">>], all, 1000).
 -spec read_by_tags(atom(), [binary()], any | all, pos_integer()) ->
     {ok, [evoq_event()]} | {error, term()}.
 read_by_tags(StoreId, Tags, Match, BatchSize) ->
