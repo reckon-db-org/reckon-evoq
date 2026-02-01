@@ -5,6 +5,15 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-02-01
+
+### Changed
+
+- **Compatibility**: Verified compatibility with evoq v1.2.1 and reckon_db v1.2.2
+  - Tested compilation and integration with latest dependency versions
+  - Version constraints `~> 1.2` for evoq already compatible with v1.2.1
+  - No code changes required; release confirms compatibility
+
 ## [1.1.0] - 2026-01-21
 
 ### Added
