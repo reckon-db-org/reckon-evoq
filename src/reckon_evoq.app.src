@@ -1,6 +1,6 @@
 {application, reckon_evoq, [
     {description, "Adapter for connecting evoq to reckon-db via reckon-gater"},
-    {vsn, "1.1.2"},
+    {vsn, "1.1.3"},
     {registered, []},
     {applications, [
         kernel,
