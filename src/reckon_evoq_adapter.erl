@@ -464,17 +464,19 @@ events_to_evoq(Events) ->
 %% Evoq events are flat maps with all fields at the top level.
 %% ReckonDB expects events with a nested data field.
 %%
+%% Handles both atom and binary keys in the event map (e.g., event_type or <<"event_type">>).
+%%
 %% Input (evoq):  #{event_type => artifact_installed, name => "...", metadata => #{}, tags => [...]}
 %% Output (reckon_db): #{event_type => artifact_installed, data => #{name => "..."}, metadata => #{}, tags => [...]}
 -spec evoq_to_reckon_event(map()) -> map().
 evoq_to_reckon_event(Event) ->
-    %% Extract fields that should be at top level
-    EventType = maps:get(event_type, Event, undefined),
-    Metadata = maps:get(metadata, Event, #{}),
-    Tags = maps:get(tags, Event, undefined),
-    CorrelationId = maps:get(correlation_id, Event, undefined),
-    CausationId = maps:get(causation_id, Event, undefined),
-    EventId = maps:get(event_id, Event, undefined),
+    %% Extract fields that should be at top level (handles atom OR binary keys)
+    EventType = get_flex(event_type, Event, undefined),
+    Metadata = get_flex(metadata, Event, #{}),
+    Tags = get_flex(tags, Event, undefined),
+    CorrelationId = get_flex(correlation_id, Event, undefined),
+    CausationId = get_flex(causation_id, Event, undefined),
+    EventId = get_flex(event_id, Event, undefined),
 
     %% Build metadata with causation/correlation if present
     MetadataWithCausation = case {CorrelationId, CausationId} of
@@ -484,10 +486,11 @@ evoq_to_reckon_event(Event) ->
         {Corr, Caus} -> Metadata#{correlation_id => Corr, causation_id => Caus}
     end,
 
-    %% Everything else goes into data (excluding top-level fields)
-    TopLevelKeys = [event_type, metadata, tags, correlation_id, causation_id, event_id,
-                    data_content_type, metadata_content_type],
-    Data = maps:without(TopLevelKeys, Event),
+    %% Everything else goes into data (excluding top-level fields, both atom and binary)
+    TopLevelAtoms = [event_type, metadata, tags, correlation_id, causation_id, event_id,
+                     data_content_type, metadata_content_type],
+    TopLevelBins = [atom_to_binary(K) || K <- TopLevelAtoms],
+    Data = maps:without(TopLevelAtoms ++ TopLevelBins, Event),
 
     %% Build reckon_db event
     BaseEvent = #{
@@ -507,6 +510,17 @@ evoq_to_reckon_event(Event) ->
     case EventId of
         undefined -> EventWithTags;
         Id -> EventWithTags#{event_id => Id}
+    end.
+
+%% @private Get a value from a map, checking atom key first, then binary key.
+%% Handles event maps that may use either convention.
+-spec get_flex(atom(), map(), term()) -> term().
+get_flex(AtomKey, Map, Default) ->
+    case maps:find(AtomKey, Map) of
+        {ok, V} -> V;
+        error ->
+            BinKey = atom_to_binary(AtomKey),
+            maps:get(BinKey, Map, Default)
     end.
 
 %% @private Generate subscription ID
