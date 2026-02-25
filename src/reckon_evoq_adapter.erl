@@ -318,6 +318,12 @@ map_to_evoq_snapshot(StreamId, Map) ->
 %%====================================================================
 
 %% @doc Subscribe to events via gateway.
+%%
+%% When a subscriber_pid is provided, a bridge process is spawned that
+%% receives raw #event{} records from ReckonDB and translates them to
+%% #evoq_event{} records before forwarding to the subscriber.
+%%
+%% The subscriber always receives: {events, [#evoq_event{}]}
 -spec subscribe(atom(), evoq_subscription_type(), binary() | map(), binary(), map()) ->
     {ok, binary()} | {error, term()}.
 subscribe(StoreId, Type, Selector, SubscriptionName, Opts) ->
@@ -327,7 +333,15 @@ subscribe(StoreId, Type, Selector, SubscriptionName, Opts) ->
     %% Map subscription type to gateway type atom
     GaterType = subscription_type_to_gater(Type),
 
-    esdb_gater_api:save_subscription(StoreId, GaterType, Selector, SubscriptionName, StartFrom, SubscriberPid),
+    %% Interpose a bridge that translates #event{} -> #evoq_event{}
+    RegistrationPid = case SubscriberPid of
+        undefined ->
+            undefined;
+        Pid when is_pid(Pid) ->
+            spawn_link(fun() -> subscription_bridge(Pid) end)
+    end,
+
+    esdb_gater_api:save_subscription(StoreId, GaterType, Selector, SubscriptionName, StartFrom, RegistrationPid),
 
     %% Generate subscription ID (gateway doesn't return one)
     SubscriptionId = generate_subscription_id(StoreId, SubscriptionName),
@@ -407,6 +421,35 @@ get_by_name(StoreId, SubscriptionName) ->
             end;
         {error, _} = Error ->
             Error
+    end.
+
+%%====================================================================
+%% Subscription Bridge
+%%====================================================================
+
+%% @private Bridge process that translates ReckonDB events to evoq events.
+%%
+%% ReckonDB emitters send {events, [#event{}]} to subscribers.
+%% This bridge converts them to {events, [#evoq_event{}]} before
+%% forwarding to the real subscriber, maintaining proper envelope
+%% structure with nested data and metadata fields.
+%%
+%% The bridge is linked to the calling process (the subscriber)
+%% via spawn_link, so it dies when the subscriber dies.
+-spec subscription_bridge(pid()) -> no_return().
+subscription_bridge(SubscriberPid) ->
+    MonRef = monitor(process, SubscriberPid),
+    subscription_bridge_loop(SubscriberPid, MonRef).
+
+-spec subscription_bridge_loop(pid(), reference()) -> ok.
+subscription_bridge_loop(SubscriberPid, MonRef) ->
+    receive
+        {events, Events} when is_list(Events) ->
+            EvoqEvents = events_to_evoq(Events),
+            SubscriberPid ! {events, EvoqEvents},
+            subscription_bridge_loop(SubscriberPid, MonRef);
+        {'DOWN', MonRef, process, SubscriberPid, _Reason} ->
+            ok
     end.
 
 %%====================================================================

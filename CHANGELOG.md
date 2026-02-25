@@ -5,6 +5,20 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-25
+
+### Fixed
+
+- **Subscription event translation**: `subscribe/5` now interposes a bridge process
+  between ReckonDB and the subscriber. ReckonDB emitters send `{events, [#event{}]}`
+  (reckon_gater records). The bridge translates these to `{events, [#evoq_event{}]}`
+  before forwarding to the subscriber. Previously, raw `#event{}` records were delivered
+  directly, causing pattern match failures in projections expecting `#evoq_event{}`.
+
+### Changed
+
+- **Dependency**: Require evoq ~> 1.4 (for `evoq_subscriptions` facade)
+
 ## [1.1.4] - 2026-02-13
 
 ### Fixed
