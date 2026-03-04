@@ -502,69 +502,15 @@ event_to_evoq(#event{
 events_to_evoq(Events) ->
     [event_to_evoq(E) || E <- Events].
 
-%% @private Transform an evoq event (flat map) to reckon_db format (nested data)
+%% @private Passthrough for nested evoq events.
 %%
-%% Evoq events are flat maps with all fields at the top level.
-%% ReckonDB expects events with a nested data field.
-%%
-%% Handles both atom and binary keys in the event map (e.g., event_type or <<"event_type">>).
-%%
-%% Input (evoq):  #{event_type => artifact_installed, name => "...", metadata => #{}, tags => [...]}
-%% Output (reckon_db): #{event_type => artifact_installed, data => #{name => "..."}, metadata => #{}, tags => [...]}
+%% Since evoq 1.5.0, append_events produces already-nested maps with
+%% #{event_type, data, metadata} — no transformation needed.
 -spec evoq_to_reckon_event(map()) -> map().
-evoq_to_reckon_event(Event) ->
-    %% Extract fields that should be at top level (handles atom OR binary keys)
-    EventType = get_flex(event_type, Event, undefined),
-    Metadata = get_flex(metadata, Event, #{}),
-    Tags = get_flex(tags, Event, undefined),
-    CorrelationId = get_flex(correlation_id, Event, undefined),
-    CausationId = get_flex(causation_id, Event, undefined),
-    EventId = get_flex(event_id, Event, undefined),
-
-    %% Build metadata with causation/correlation if present
-    MetadataWithCausation = case {CorrelationId, CausationId} of
-        {undefined, undefined} -> Metadata;
-        {Corr, undefined} -> Metadata#{correlation_id => Corr};
-        {undefined, Caus} -> Metadata#{causation_id => Caus};
-        {Corr, Caus} -> Metadata#{correlation_id => Corr, causation_id => Caus}
-    end,
-
-    %% Everything else goes into data (excluding top-level fields, both atom and binary)
-    TopLevelAtoms = [event_type, metadata, tags, correlation_id, causation_id, event_id,
-                     data_content_type, metadata_content_type],
-    TopLevelBins = [atom_to_binary(K) || K <- TopLevelAtoms],
-    Data = maps:without(TopLevelAtoms ++ TopLevelBins, Event),
-
-    %% Build reckon_db event
-    BaseEvent = #{
-        event_type => EventType,
-        data => Data,
-        metadata => MetadataWithCausation
-    },
-
-    %% Add optional tags if present
-    EventWithTags = case Tags of
-        undefined -> BaseEvent;
-        [] -> BaseEvent;  %% Don't include empty tags
-        TagList when is_list(TagList) -> BaseEvent#{tags => TagList}
-    end,
-
-    %% Add optional event_id if present
-    case EventId of
-        undefined -> EventWithTags;
-        Id -> EventWithTags#{event_id => Id}
-    end.
-
-%% @private Get a value from a map, checking atom key first, then binary key.
-%% Handles event maps that may use either convention.
--spec get_flex(atom(), map(), term()) -> term().
-get_flex(AtomKey, Map, Default) ->
-    case maps:find(AtomKey, Map) of
-        {ok, V} -> V;
-        error ->
-            BinKey = atom_to_binary(AtomKey),
-            maps:get(BinKey, Map, Default)
-    end.
+evoq_to_reckon_event(#{data := _, event_type := _} = Event) ->
+    Event;
+evoq_to_reckon_event(#{<<"data">> := _, <<"event_type">> := _} = Event) ->
+    Event.
 
 %% @private Generate subscription ID
 -spec generate_subscription_id(atom(), binary()) -> binary().
