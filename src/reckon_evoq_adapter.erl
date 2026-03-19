@@ -34,6 +34,8 @@
     append/4,
     read/5,
     read_all/3,
+    read_all_global/3,
+    has_events/1,
     read_by_event_types/3,
     read_by_tags/3,
     read_by_tags/4,
@@ -67,6 +69,19 @@
     get_checkpoint/2,
     list/1,
     get_by_name/2
+]).
+
+%%====================================================================
+%% Store Inspector Operations
+%%====================================================================
+
+-export([
+    store_stats/1,
+    list_all_snapshots/1,
+    list_subscriptions/1,
+    subscription_lag/2,
+    event_type_summary/1,
+    stream_info/2
 ]).
 
 %%====================================================================
@@ -111,6 +126,27 @@ read(StoreId, StreamId, StartVersion, Count, Direction) ->
         {error, _} = Error ->
             Error
     end.
+
+%% @doc Read all events across all streams in global order via gateway.
+%%
+%% Returns events sorted by epoch_us, starting from Offset.
+%% Used for catch-up subscriptions and global event replay.
+-spec read_all_global(atom(), non_neg_integer(), pos_integer()) ->
+    {ok, [evoq_event()]} | {error, term()}.
+read_all_global(StoreId, Offset, BatchSize) ->
+    case esdb_gater_api:read_all_global(StoreId, Offset, BatchSize) of
+        {ok, Events} when is_list(Events) ->
+            {ok, events_to_evoq(Events)};
+        {ok, {ok, Events}} when is_list(Events) ->
+            {ok, events_to_evoq(Events)};
+        {error, _} = Error ->
+            Error
+    end.
+
+%% @doc Check if a store contains at least one event.
+-spec has_events(atom()) -> boolean().
+has_events(StoreId) ->
+    esdb_gater_api:has_events(StoreId).
 
 %% @doc Read all events from a stream via gateway.
 -spec read_all(atom(), binary(), forward | backward) ->
@@ -544,3 +580,31 @@ map_to_evoq_subscription(Map) ->
         checkpoint = maps:get(checkpoint, Map, undefined),
         options = maps:get(options, Map, #{})
     }.
+
+%%====================================================================
+%% Store Inspector Operations
+%%====================================================================
+
+-spec store_stats(atom()) -> {ok, map()} | {error, term()}.
+store_stats(StoreId) ->
+    esdb_gater_api:store_stats(StoreId).
+
+-spec list_all_snapshots(atom()) -> {ok, [map()]} | {error, term()}.
+list_all_snapshots(StoreId) ->
+    esdb_gater_api:list_all_snapshots(StoreId).
+
+-spec list_subscriptions(atom()) -> {ok, [map()]} | {error, term()}.
+list_subscriptions(StoreId) ->
+    esdb_gater_api:list_store_subscriptions(StoreId).
+
+-spec subscription_lag(atom(), binary()) -> {ok, map()} | {error, term()}.
+subscription_lag(StoreId, SubscriptionName) ->
+    esdb_gater_api:subscription_lag(StoreId, SubscriptionName).
+
+-spec event_type_summary(atom()) -> {ok, [map()]} | {error, term()}.
+event_type_summary(StoreId) ->
+    esdb_gater_api:event_type_summary(StoreId).
+
+-spec stream_info(atom(), binary()) -> {ok, map()} | {error, term()}.
+stream_info(StoreId, StreamId) ->
+    esdb_gater_api:stream_info(StoreId, StreamId).

@@ -13,6 +13,7 @@ reckon-evoq is a thin adapter layer that implements the evoq behavior interfaces
 - `evoq_adapter` - Event store operations (append, read, delete)
 - `evoq_snapshot_adapter` - Snapshot operations (save, read, delete)
 - `evoq_subscription_adapter` - Subscription operations (subscribe, ack, checkpoint)
+- `evoq_checkpoint_store` - Persistent projection checkpoints via ReckonDB snapshots
 
 All operations are routed through reckon-gater, which provides:
 
@@ -26,7 +27,7 @@ Add to your `rebar.config`:
 
 ```erlang
 {deps, [
-    {reckon_evoq, "~> 1.0"}
+    {reckon_evoq, "~> 1.3"}
 ]}.
 ```
 
@@ -160,6 +161,22 @@ reckon_evoq_adapter:list(StoreId).
 %% Get subscription by name
 reckon_evoq_adapter:get_by_name(StoreId, SubscriptionName).
 %% Returns: {ok, #subscription{}} | {error, not_found}
+```
+
+### Checkpoint Store
+
+```erlang
+%% Configure which ReckonDB store holds projection checkpoints
+application:set_env(reckon_evoq, checkpoint_store_id, my_store).
+
+%% Use with evoq_projection
+evoq_projection:start_link(MyProjection, Config, #{
+    checkpoint_store => reckon_evoq_checkpoint_store
+}).
+
+%% Checkpoints persist as ReckonDB snapshots.
+%% On restart, projections resume from last checkpoint
+%% instead of replaying all events.
 ```
 
 ## Architecture
