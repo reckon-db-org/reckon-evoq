@@ -8,7 +8,7 @@
 -define(RECKON_EVOQ_HRL, true).
 
 %% Include shared types from reckon-gater (event, snapshot, subscription)
--include_lib("reckon_gater/include/esdb_gater_types.hrl").
+-include_lib("reckon_gater/include/reckon_gater_types.hrl").
 
 %%====================================================================
 %% Telemetry Events

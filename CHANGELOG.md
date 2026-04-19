@@ -5,6 +5,32 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-04-19
+
+### Changed
+
+**BREAKING**: Updated to consume the renamed reckon-gater 2.0.0 API.
+All internal references to `esdb_gater_api:*` migrated to
+`reckon_gater_api:*`. Include paths updated:
+
+- `-include_lib("reckon_gater/include/esdb_gater_types.hrl")`
+  → `-include_lib("reckon_gater/include/reckon_gater_types.hrl")`
+
+### Dependencies
+
+- Bumped `reckon_gater` to `~> 2.0`
+- Kept `evoq` at `~> 1.14` (evoq 1.14.2 is a patch with only comment
+  updates, fully API-compatible)
+
+### Migration
+
+Pure drop-in replacement for apps that use `reckon_evoq_adapter`
+through `evoq_dispatcher`. No adapter contract changes.
+
+Apps that reached directly into `esdb_gater_api` from their own code
+(rather than through reckon-evoq) must do their own migration per
+reckon-gater 2.0.0's migration notes.
+
 ## [1.5.1] - 2026-03-19
 
 ### Added
@@ -12,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Store Inspector operations** in `reckon_evoq_adapter`:
   - `store_stats/1`, `list_all_snapshots/1`, `list_subscriptions/1`
   - `subscription_lag/2`, `event_type_summary/1`, `stream_info/2`
-  - Delegates to `esdb_gater_api` inspector exports (reckon_gater 1.3.1+)
+  - Delegates to `reckon_gater_api` inspector exports (reckon_gater 1.3.1+)
 
 ### Changed
 
@@ -22,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`reckon_evoq_adapter:has_events/1`**: Delegates to `esdb_gater_api:has_events/1`
+- **`reckon_evoq_adapter:has_events/1`**: Delegates to `reckon_gater_api:has_events/1`
   for checking if a store contains at least one event.
 
 ### Changed
@@ -42,7 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Persistent checkpoint store**: `reckon_evoq_checkpoint_store` implements
   `evoq_checkpoint_store` behaviour, persisting projection checkpoints as
-  ReckonDB snapshots via `esdb_gater_api`. Projections can now resume from
+  ReckonDB snapshots via `reckon_gater_api`. Projections can now resume from
   where they left off after restart without full event replay.
   - Stream convention: `<<"projection-checkpoint-{module_name}">>`
   - Configurable store: `application:set_env(reckon_evoq, checkpoint_store_id, my_store)`
@@ -220,16 +246,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`delete_stream/2`**: Now functional - calls `esdb_gater_api:delete_stream/2`
+- **`delete_stream/2`**: Now functional - calls `reckon_gater_api:delete_stream/2`
   instead of returning `{error, not_implemented}`
 
 - **`get_checkpoint/2`**: Now functional - retrieves checkpoint from subscription
-  via `esdb_gater_api:get_subscription/2`
+  via `reckon_gater_api:get_subscription/2`
 
 ### Changed
 
 - **`read_by_event_types/3`**: Optimized to use server-side native Khepri filtering
-  via `esdb_gater_api:read_by_event_types/3` instead of fetching all streams
+  via `reckon_gater_api:read_by_event_types/3` instead of fetching all streams
   and filtering client-side. Significantly improved performance for type-based
   queries.
 

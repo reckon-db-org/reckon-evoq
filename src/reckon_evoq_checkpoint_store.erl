@@ -29,7 +29,7 @@
 load(ProjectionName) ->
     StoreId = store_id(),
     StreamId = stream_id(ProjectionName),
-    case esdb_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
+    case reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
         {ok, []} ->
             {error, not_found};
         {ok, Snapshots} when is_list(Snapshots) ->
@@ -53,18 +53,18 @@ save(ProjectionName, Checkpoint) ->
         metadata => #{saved_at => erlang:system_time(millisecond)},
         timestamp => erlang:system_time(millisecond)
     },
-    esdb_gater_api:record_snapshot(StoreId, StreamId, StreamId, Checkpoint, SnapshotRecord).
+    reckon_gater_api:record_snapshot(StoreId, StreamId, StreamId, Checkpoint, SnapshotRecord).
 
 %% @doc Delete the checkpoint for a projection.
 -spec delete(atom()) -> ok | {error, term()}.
 delete(ProjectionName) ->
     StoreId = store_id(),
     StreamId = stream_id(ProjectionName),
-    case esdb_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
+    case reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
         {ok, Snapshots} when is_list(Snapshots) ->
             lists:foreach(fun(S) ->
                 Version = maps:get(version, S, 0),
-                esdb_gater_api:delete_snapshot(StoreId, StreamId, StreamId, Version)
+                reckon_gater_api:delete_snapshot(StoreId, StreamId, StreamId, Version)
             end, Snapshots),
             ok;
         {error, _} ->

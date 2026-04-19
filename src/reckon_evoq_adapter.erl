@@ -1,6 +1,6 @@
 %% @doc Gateway adapter implementation for evoq
 %%
-%% Implements the adapter behaviors using esdb_gater_api to route
+%% Implements the adapter behaviors using reckon_gater_api to route
 %% all operations through the reckon-gater load balancer.
 %%
 %% This adapter ensures that evoq never directly calls reckon-db
@@ -20,7 +20,7 @@
 
 %% reckon-gater types (what the backend uses internally)
 %% Must be included FIRST to define macros
--include_lib("reckon_gater/include/esdb_gater_types.hrl").
+-include_lib("reckon_gater/include/reckon_gater_types.hrl").
 
 %% evoq types (what we return to evoq consumers)
 %% Included second - uses ifndef guards for shared macros
@@ -98,7 +98,7 @@
 append(StoreId, StreamId, ExpectedVersion, Events) ->
     %% Transform events to reckon_db format
     TransformedEvents = [evoq_to_reckon_event(E) || E <- Events],
-    case esdb_gater_api:append_events(StoreId, StreamId, ExpectedVersion, TransformedEvents) of
+    case reckon_gater_api:append_events(StoreId, StreamId, ExpectedVersion, TransformedEvents) of
         {ok, NewVersion} ->
             {ok, NewVersion};
         {error, _} = Error ->
@@ -112,7 +112,7 @@ append(StoreId, StreamId, ExpectedVersion, Events) ->
 -spec read(atom(), binary(), non_neg_integer(), pos_integer(), forward | backward) ->
     {ok, [evoq_event()]} | {error, term()}.
 read(StoreId, StreamId, StartVersion, Count, Direction) ->
-    case esdb_gater_api:get_events(StoreId, StreamId, StartVersion, Count, Direction) of
+    case reckon_gater_api:get_events(StoreId, StreamId, StartVersion, Count, Direction) of
         {ok, Events} when is_list(Events) ->
             {ok, events_to_evoq(Events)};
         %% Handle double-wrapped error (gateway bug workaround)
@@ -134,7 +134,7 @@ read(StoreId, StreamId, StartVersion, Count, Direction) ->
 -spec read_all_global(atom(), non_neg_integer(), pos_integer()) ->
     {ok, [evoq_event()]} | {error, term()}.
 read_all_global(StoreId, Offset, BatchSize) ->
-    case esdb_gater_api:read_all_global(StoreId, Offset, BatchSize) of
+    case reckon_gater_api:read_all_global(StoreId, Offset, BatchSize) of
         {ok, Events} when is_list(Events) ->
             {ok, events_to_evoq(Events)};
         {ok, {ok, Events}} when is_list(Events) ->
@@ -146,7 +146,7 @@ read_all_global(StoreId, Offset, BatchSize) ->
 %% @doc Check if a store contains at least one event.
 -spec has_events(atom()) -> boolean().
 has_events(StoreId) ->
-    esdb_gater_api:has_events(StoreId).
+    reckon_gater_api:has_events(StoreId).
 
 %% @doc Read all events from a stream via gateway.
 -spec read_all(atom(), binary(), forward | backward) ->
@@ -182,7 +182,7 @@ read_all_batched(StoreId, StreamId, StartVersion, Direction, Acc) ->
 -spec read_by_event_types(atom(), [binary()], pos_integer()) ->
     {ok, [evoq_event()]} | {error, term()}.
 read_by_event_types(StoreId, EventTypes, BatchSize) ->
-    case esdb_gater_api:read_by_event_types(StoreId, EventTypes, BatchSize) of
+    case reckon_gater_api:read_by_event_types(StoreId, EventTypes, BatchSize) of
         {ok, {ok, Events}} when is_list(Events) ->
             {ok, events_to_evoq(Events)};
         {ok, Events} when is_list(Events) ->
@@ -211,7 +211,7 @@ read_by_tags(StoreId, Tags, BatchSize) ->
 -spec read_by_tags(atom(), [binary()], any | all, pos_integer()) ->
     {ok, [evoq_event()]} | {error, term()}.
 read_by_tags(StoreId, Tags, Match, BatchSize) ->
-    case esdb_gater_api:read_by_tags(StoreId, Tags, #{match => Match, batch_size => BatchSize}) of
+    case reckon_gater_api:read_by_tags(StoreId, Tags, #{match => Match, batch_size => BatchSize}) of
         {ok, {ok, Events}} when is_list(Events) ->
             {ok, events_to_evoq(Events)};
         {ok, Events} when is_list(Events) ->
@@ -223,7 +223,7 @@ read_by_tags(StoreId, Tags, Match, BatchSize) ->
 %% @doc Get current stream version via gateway.
 -spec version(atom(), binary()) -> integer().
 version(StoreId, StreamId) ->
-    case esdb_gater_api:get_version(StoreId, StreamId) of
+    case reckon_gater_api:get_version(StoreId, StreamId) of
         {ok, Version} -> Version;
         {error, _} -> ?NO_STREAM
     end.
@@ -236,7 +236,7 @@ exists(StoreId, StreamId) ->
 %% @doc List all streams via gateway.
 -spec list_streams(atom()) -> {ok, [binary()]} | {error, term()}.
 list_streams(StoreId) ->
-    case esdb_gater_api:get_streams(StoreId) of
+    case reckon_gater_api:get_streams(StoreId) of
         {ok, Streams} -> {ok, Streams};
         {error, _} = Error -> Error
     end.
@@ -244,7 +244,7 @@ list_streams(StoreId) ->
 %% @doc Delete a stream via gateway.
 -spec delete_stream(atom(), binary()) -> ok | {error, term()}.
 delete_stream(StoreId, StreamId) ->
-    case esdb_gater_api:delete_stream(StoreId, StreamId) of
+    case reckon_gater_api:delete_stream(StoreId, StreamId) of
         {ok, ok} -> ok;
         ok -> ok;
         {error, _} = Error -> Error
@@ -258,21 +258,21 @@ delete_stream(StoreId, StreamId) ->
 -spec save(atom(), binary(), non_neg_integer(), map() | binary(), map()) ->
     ok | {error, term()}.
 save(StoreId, StreamId, Version, Data, Metadata) ->
-    %% esdb_gater_api uses SourceUuid, StreamUuid pattern
+    %% reckon_gater_api uses SourceUuid, StreamUuid pattern
     %% For aggregate snapshots, both are typically the same
     SnapshotRecord = #{
         data => Data,
         metadata => Metadata,
         timestamp => erlang:system_time(millisecond)
     },
-    esdb_gater_api:record_snapshot(StoreId, StreamId, StreamId, Version, SnapshotRecord).
+    reckon_gater_api:record_snapshot(StoreId, StreamId, StreamId, Version, SnapshotRecord).
 
 %% @doc Read the latest snapshot via gateway.
 -spec read(atom(), binary()) ->
     {ok, evoq_snapshot()} | {error, not_found | term()}.
 read(StoreId, StreamId) ->
     %% List all snapshots and get the latest one
-    case esdb_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
+    case reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
         {ok, []} ->
             {error, not_found};
         {ok, Snapshots} ->
@@ -298,7 +298,7 @@ read(StoreId, StreamId) ->
 -spec read_at_version(atom(), binary(), non_neg_integer()) ->
     {ok, evoq_snapshot()} | {error, not_found | term()}.
 read_at_version(StoreId, StreamId, Version) ->
-    case esdb_gater_api:read_snapshot(StoreId, StreamId, StreamId, Version) of
+    case reckon_gater_api:read_snapshot(StoreId, StreamId, StreamId, Version) of
         {ok, SnapshotMap} ->
             {ok, map_to_evoq_snapshot(StreamId, SnapshotMap#{version => Version})};
         {error, _} = Error ->
@@ -309,11 +309,11 @@ read_at_version(StoreId, StreamId, Version) ->
 -spec delete(atom(), binary()) -> ok | {error, term()}.
 delete(StoreId, StreamId) ->
     %% List and delete all versions
-    case esdb_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
+    case reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
         {ok, Snapshots} ->
             lists:foreach(fun(S) ->
                 Version = maps:get(version, S, 0),
-                esdb_gater_api:delete_snapshot(StoreId, StreamId, StreamId, Version)
+                reckon_gater_api:delete_snapshot(StoreId, StreamId, StreamId, Version)
             end, Snapshots),
             ok;
         {error, _} ->
@@ -324,13 +324,13 @@ delete(StoreId, StreamId) ->
 -spec delete_at_version(atom(), binary(), non_neg_integer()) ->
     ok | {error, term()}.
 delete_at_version(StoreId, StreamId, Version) ->
-    esdb_gater_api:delete_snapshot(StoreId, StreamId, StreamId, Version).
+    reckon_gater_api:delete_snapshot(StoreId, StreamId, StreamId, Version).
 
 %% @doc List snapshot versions via gateway.
 -spec list_versions(atom(), binary()) ->
     {ok, [non_neg_integer()]} | {error, term()}.
 list_versions(StoreId, StreamId) ->
-    case esdb_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
+    case reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
         {ok, Snapshots} ->
             Versions = [maps:get(version, S, 0) || S <- Snapshots],
             {ok, lists:sort(Versions)};
@@ -377,7 +377,7 @@ subscribe(StoreId, Type, Selector, SubscriptionName, Opts) ->
             spawn_link(fun() -> subscription_bridge(Pid) end)
     end,
 
-    esdb_gater_api:save_subscription(StoreId, GaterType, Selector, SubscriptionName, StartFrom, RegistrationPid),
+    reckon_gater_api:save_subscription(StoreId, GaterType, Selector, SubscriptionName, StartFrom, RegistrationPid),
 
     %% Generate subscription ID (gateway doesn't return one)
     SubscriptionId = generate_subscription_id(StoreId, SubscriptionName),
@@ -389,7 +389,7 @@ unsubscribe(StoreId, SubscriptionId) ->
     %% Parse subscription info from ID
     case parse_subscription_id(SubscriptionId) of
         {ok, {Type, Selector, Name}} ->
-            esdb_gater_api:remove_subscription(StoreId, Type, Selector, Name),
+            reckon_gater_api:remove_subscription(StoreId, Type, Selector, Name),
             ok;
         {error, _} = Error ->
             Error
@@ -402,14 +402,14 @@ ack(StoreId, SubscriptionName, _StreamId, Position) ->
     %% Gateway ack expects an Event map, but we have position
     %% Create a minimal event map with version as position
     EventMap = #{version => Position},
-    esdb_gater_api:ack_event(StoreId, SubscriptionName, self(), EventMap),
+    reckon_gater_api:ack_event(StoreId, SubscriptionName, self(), EventMap),
     ok.
 
 %% @doc Get checkpoint for subscription via gateway.
 -spec get_checkpoint(atom(), binary()) ->
     {ok, non_neg_integer()} | {error, not_found | term()}.
 get_checkpoint(StoreId, SubscriptionName) ->
-    case esdb_gater_api:get_subscription(StoreId, SubscriptionName) of
+    case reckon_gater_api:get_subscription(StoreId, SubscriptionName) of
         {ok, {ok, SubMap}} when is_map(SubMap) ->
             extract_checkpoint(SubMap);
         {ok, SubMap} when is_map(SubMap) ->
@@ -434,7 +434,7 @@ extract_checkpoint(SubMap) ->
 %% @doc List subscriptions via gateway.
 -spec list(atom()) -> {ok, [evoq_subscription()]} | {error, term()}.
 list(StoreId) ->
-    case esdb_gater_api:get_subscriptions(StoreId) of
+    case reckon_gater_api:get_subscriptions(StoreId) of
         {ok, Subscriptions} ->
             Records = [map_to_evoq_subscription(S) || S <- Subscriptions],
             {ok, Records};
@@ -587,24 +587,24 @@ map_to_evoq_subscription(Map) ->
 
 -spec store_stats(atom()) -> {ok, map()} | {error, term()}.
 store_stats(StoreId) ->
-    esdb_gater_api:store_stats(StoreId).
+    reckon_gater_api:store_stats(StoreId).
 
 -spec list_all_snapshots(atom()) -> {ok, [map()]} | {error, term()}.
 list_all_snapshots(StoreId) ->
-    esdb_gater_api:list_all_snapshots(StoreId).
+    reckon_gater_api:list_all_snapshots(StoreId).
 
 -spec list_subscriptions(atom()) -> {ok, [map()]} | {error, term()}.
 list_subscriptions(StoreId) ->
-    esdb_gater_api:list_store_subscriptions(StoreId).
+    reckon_gater_api:list_store_subscriptions(StoreId).
 
 -spec subscription_lag(atom(), binary()) -> {ok, map()} | {error, term()}.
 subscription_lag(StoreId, SubscriptionName) ->
-    esdb_gater_api:subscription_lag(StoreId, SubscriptionName).
+    reckon_gater_api:subscription_lag(StoreId, SubscriptionName).
 
 -spec event_type_summary(atom()) -> {ok, [map()]} | {error, term()}.
 event_type_summary(StoreId) ->
-    esdb_gater_api:event_type_summary(StoreId).
+    reckon_gater_api:event_type_summary(StoreId).
 
 -spec stream_info(atom(), binary()) -> {ok, map()} | {error, term()}.
 stream_info(StoreId, StreamId) ->
-    esdb_gater_api:stream_info(StoreId, StreamId).
+    reckon_gater_api:stream_info(StoreId, StreamId).
