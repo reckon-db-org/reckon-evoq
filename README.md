@@ -4,7 +4,7 @@
 [![Hex Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/reckon_evoq)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow.svg)](https://buymeacoffee.com/beamologist)
 
-Adapter for connecting [evoq](https://github.com/reckon-db-org/evoq) CQRS/ES framework to [reckon-db](https://github.com/reckon-db-org/reckon-db) event store via [reckon-gater](https://github.com/reckon-db-org/reckon-gater) gateway.
+Adapter for connecting [evoq](https://codeberg.org/reckon-db-org/evoq) CQRS/ES framework to [reckon-db](https://codeberg.org/reckon-db-org/reckon-db) event store via [reckon-gater](https://codeberg.org/reckon-db-org/reckon-gater) gateway.
 
 ## Overview
 
@@ -226,9 +226,9 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## Related Projects
 
-- [evoq](https://github.com/reckon-db-org/evoq) - CQRS/ES framework
-- [reckon-db](https://github.com/reckon-db-org/reckon-db) - BEAM-native Event Store
-- [reckon-gater](https://github.com/reckon-db-org/reckon-gater) - Gateway API
+- [evoq](https://codeberg.org/reckon-db-org/evoq) - CQRS/ES framework
+- [reckon-db](https://codeberg.org/reckon-db-org/reckon-db) - BEAM-native Event Store
+- [reckon-gater](https://codeberg.org/reckon-db-org/reckon-gater) - Gateway API
 
 ## License
 
