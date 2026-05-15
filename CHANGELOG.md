@@ -5,6 +5,48 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-05-15
+
+### Added — Chain hash propagation
+
+Layer 6 of the cross-package tamper-resistance work in
+reckon-db/plans/PLAN_TAMPER_RESISTANCE.md. Single-block change
+in `event_to_evoq/1` that forwards reckon-gater's new
+`prev_event_hash` field on `#event{}` through to evoq's matching
+field on `#evoq_event{}`.
+
+The `mac` and `signature` fields on the storage-side record are
+intentionally NOT forwarded — they belong to the storage layer
+and require the per-store HMAC / public key that consumers above
+the adapter do not (and must not) hold.
+
+### Dependencies
+
+- `reckon_gater` bumped to `~> 2.1` (was `~> 2.0`) — needs the
+  `prev_event_hash` field on `#event{}`.
+- `evoq` bumped to `~> 1.15` (was `~> 1.14`) — needs the matching
+  field on `#evoq_event{}` and the `is_integrity_violation/1`
+  classifier in `evoq_aggregate`.
+
+### Compatibility
+
+Pure forward-pass addition. Apps using `reckon_evoq_adapter`
+through `evoq_dispatcher` see no change in observable behaviour
+except that events received in projections / process managers
+now carry `prev_event_hash` (populated when the underlying
+reckon-db store has integrity enabled; `undefined` otherwise).
+
+Integrity violations from the storage layer continue to flow
+through unchanged — they were already pattern-matched as
+`{error, _}` and forwarded by the existing read path. No new
+handling code in the adapter; evoq 1.15.0's dispatcher does
+the recognition.
+
+### Changed
+
+- `src/reckon_evoq.app.src`: `{"GitHub", ...}` updated to
+  `{"Codeberg", ...}` to match canonical hosting.
+
 ## [2.0.0] - 2026-04-19
 
 ### Changed
