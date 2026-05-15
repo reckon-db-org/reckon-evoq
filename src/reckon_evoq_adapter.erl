@@ -517,7 +517,8 @@ event_to_evoq(#event{
     timestamp = Timestamp,
     epoch_us = EpochUs,
     data_content_type = DataContentType,
-    metadata_content_type = MetadataContentType
+    metadata_content_type = MetadataContentType,
+    prev_event_hash = PrevEventHash
 }) ->
     #evoq_event{
         event_id = EventId,
@@ -530,7 +531,10 @@ event_to_evoq(#event{
         timestamp = Timestamp,
         epoch_us = EpochUs,
         data_content_type = DataContentType,
-        metadata_content_type = MetadataContentType
+        metadata_content_type = MetadataContentType,
+        prev_event_hash = PrevEventHash
+        %% mac and signature intentionally NOT propagated —
+        %% they belong to the storage layer.
     }.
 
 %% @private Translate a list of reckon_gater events to evoq events
