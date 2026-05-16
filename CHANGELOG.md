@@ -5,6 +5,21 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-05-16
+
+### Fixed — Snapshot read path
+
+The four snapshot adapter call sites (`read/2`, `read_at_version/3`, `delete/2`, `list_versions/2`) assumed `reckon_gater_api:list_snapshots/3` and `read_snapshot/4` returned `[map()]` / `map()`. The API spec says so. The actual reckon-db side returns `#snapshot{}` records — drift that landed during the 2.1.0 tamper-resistance work without updating the consumer.
+
+Symptom: any aggregate snapshot load through reckon-evoq crashed with `badmap` inside `lists:foldl` (`read/2`) or directly on `maps:get/3` (`delete`, `list_versions`).
+
+Surfaced by the `reckon-e2e` `adapter_swap_torture` harness — the unit tests in this repo never crossed the gateway boundary so the drift was invisible until then.
+
+### Changed
+
+- New private helper `snapshot_version/1` accepts both `#snapshot{}` and `map()` shapes so the adapter is tolerant of future spec realignment.
+- `map_to_evoq_snapshot/2` → `gater_to_evoq_snapshot/2` — clearer name, two clauses (record + map), unwraps the user's `data`/`metadata`/`timestamp` from the wrapper that `save/5` stores them in.
+
 ## [2.1.0] - 2026-05-15
 
 ### Added — Chain hash propagation

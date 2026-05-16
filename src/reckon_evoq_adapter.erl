@@ -271,54 +271,54 @@ save(StoreId, StreamId, Version, Data, Metadata) ->
 -spec read(atom(), binary()) ->
     {ok, evoq_snapshot()} | {error, not_found | term()}.
 read(StoreId, StreamId) ->
-    %% List all snapshots and get the latest one
-    case reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
-        {ok, []} ->
-            {error, not_found};
-        {ok, Snapshots} ->
-            %% Find the snapshot with highest version
-            Latest = lists:foldl(
-                fun(S, Acc) ->
-                    SVersion = maps:get(version, S, 0),
-                    AccVersion = maps:get(version, Acc, -1),
-                    case SVersion > AccVersion of
-                        true -> S;
-                        false -> Acc
-                    end
-                end,
-                #{version => -1},
-                Snapshots
-            ),
-            {ok, map_to_evoq_snapshot(StreamId, Latest)};
-        {error, _} = Error ->
-            Error
-    end.
+    fold_latest(
+        reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId),
+        StreamId).
+
+fold_latest({ok, []}, _StreamId) ->
+    {error, not_found};
+fold_latest({ok, Snapshots}, StreamId) ->
+    Latest = lists:foldl(fun pick_higher_version/2, undefined, Snapshots),
+    {ok, gater_to_evoq_snapshot(StreamId, Latest)};
+fold_latest({error, _} = Error, _StreamId) ->
+    Error.
+
+pick_higher_version(S, undefined) -> S;
+pick_higher_version(S, Acc)       -> higher(S, Acc, snapshot_version(S),
+                                            snapshot_version(Acc)).
+
+higher(S, _Acc, Sv, Av) when Sv > Av -> S;
+higher(_S, Acc, _Sv, _Av)            -> Acc.
 
 %% @doc Read snapshot at specific version via gateway.
 -spec read_at_version(atom(), binary(), non_neg_integer()) ->
     {ok, evoq_snapshot()} | {error, not_found | term()}.
 read_at_version(StoreId, StreamId, Version) ->
-    case reckon_gater_api:read_snapshot(StoreId, StreamId, StreamId, Version) of
-        {ok, SnapshotMap} ->
-            {ok, map_to_evoq_snapshot(StreamId, SnapshotMap#{version => Version})};
-        {error, _} = Error ->
-            Error
-    end.
+    convert_read_at(
+        reckon_gater_api:read_snapshot(StoreId, StreamId, StreamId, Version),
+        StreamId, Version).
+
+convert_read_at({ok, S}, StreamId, _Version) ->
+    {ok, gater_to_evoq_snapshot(StreamId, S)};
+convert_read_at({error, _} = Error, _StreamId, _Version) ->
+    Error.
 
 %% @doc Delete all snapshots via gateway.
 -spec delete(atom(), binary()) -> ok | {error, term()}.
 delete(StoreId, StreamId) ->
-    %% List and delete all versions
-    case reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
-        {ok, Snapshots} ->
-            lists:foreach(fun(S) ->
-                Version = maps:get(version, S, 0),
-                reckon_gater_api:delete_snapshot(StoreId, StreamId, StreamId, Version)
-            end, Snapshots),
-            ok;
-        {error, _} ->
-            ok  %% Nothing to delete
-    end.
+    delete_all(
+        reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId),
+        StoreId, StreamId).
+
+delete_all({ok, Snapshots}, StoreId, StreamId) ->
+    lists:foreach(
+        fun(S) ->
+            reckon_gater_api:delete_snapshot(
+                StoreId, StreamId, StreamId, snapshot_version(S))
+        end, Snapshots),
+    ok;
+delete_all({error, _}, _StoreId, _StreamId) ->
+    ok.  %% Nothing to delete
 
 %% @doc Delete snapshot at version via gateway.
 -spec delete_at_version(atom(), binary(), non_neg_integer()) ->
@@ -330,23 +330,48 @@ delete_at_version(StoreId, StreamId, Version) ->
 -spec list_versions(atom(), binary()) ->
     {ok, [non_neg_integer()]} | {error, term()}.
 list_versions(StoreId, StreamId) ->
-    case reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
-        {ok, Snapshots} ->
-            Versions = [maps:get(version, S, 0) || S <- Snapshots],
-            {ok, lists:sort(Versions)};
-        {error, _} = Error ->
-            Error
-    end.
+    extract_versions(
+        reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId)).
 
-%% @private Convert map to evoq snapshot record
--spec map_to_evoq_snapshot(binary(), map()) -> evoq_snapshot().
-map_to_evoq_snapshot(StreamId, Map) ->
+extract_versions({ok, Snapshots}) ->
+    {ok, lists:sort([snapshot_version(S) || S <- Snapshots])};
+extract_versions({error, _} = Error) ->
+    Error.
+
+%%====================================================================
+%% Internal — snapshot shape adaptation
+%%====================================================================
+%%
+%% reckon-gater's snapshot operations return reckon_gater_types
+%% `#snapshot{}' records (the spec says map, but the spec drifted
+%% during the 2.1.0 tamper-resistance work). The adapter accepts both
+%% shapes to be tolerant of future spec realignment; the field
+%% accessor here is the seam.
+
+snapshot_version(#snapshot{version = V})       -> V;
+snapshot_version(M) when is_map(M)             -> maps:get(version, M, 0).
+
+%% @private Translate a gater snapshot (record or map) into the
+%% evoq-side `#evoq_snapshot{}'. The record-shape stores user data
+%% wrapped under `data', `metadata', `timestamp' keys (see save/5),
+%% so unwrap from the outer record/map. anchor_hash and mac (storage-
+%% only) are intentionally not propagated.
+gater_to_evoq_snapshot(StreamId, #snapshot{version = V, data = Wrapper})
+        when is_map(Wrapper) ->
     #evoq_snapshot{
         stream_id = StreamId,
-        version = maps:get(version, Map, 0),
-        data = maps:get(data, Map, #{}),
-        metadata = maps:get(metadata, Map, #{}),
-        timestamp = maps:get(timestamp, Map, 0)
+        version   = V,
+        data      = maps:get(data, Wrapper, #{}),
+        metadata  = maps:get(metadata, Wrapper, #{}),
+        timestamp = maps:get(timestamp, Wrapper, 0)
+    };
+gater_to_evoq_snapshot(StreamId, M) when is_map(M) ->
+    #evoq_snapshot{
+        stream_id = StreamId,
+        version   = maps:get(version, M, 0),
+        data      = maps:get(data, M, #{}),
+        metadata  = maps:get(metadata, M, #{}),
+        timestamp = maps:get(timestamp, M, 0)
     }.
 
 %%====================================================================
