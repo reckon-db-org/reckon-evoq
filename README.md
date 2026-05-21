@@ -47,8 +47,8 @@ In your `sys.config`:
 
 ```erlang
 {evoq, [
-    {adapter, reckon_evoq_adapter},
-    {snapshot_adapter, reckon_evoq_adapter},
+    {event_store_adapter, reckon_evoq_adapter},
+    {snapshot_store_adapter, reckon_evoq_adapter},
     {subscription_adapter, reckon_evoq_adapter}
 ]}
 ```
