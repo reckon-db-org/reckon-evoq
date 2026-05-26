@@ -32,6 +32,7 @@
 
 -export([
     append/4,
+    append_if_no_tag_matches/4,
     read/5,
     read_all/3,
     read_all_global/3,
@@ -101,6 +102,37 @@ append(StoreId, StreamId, ExpectedVersion, Events) ->
     case reckon_gater_api:append_events(StoreId, StreamId, ExpectedVersion, TransformedEvents) of
         {ok, NewVersion} ->
             {ok, NewVersion};
+        {error, _} = Error ->
+            Error
+    end.
+
+%% @doc Conditionally append events under the DCB pseudo-stream
+%% (Dynamic Consistency Boundary — paired with reckon-db 3.1.0+).
+%%
+%% Unlike `append/4`, the precondition is a tag-filter context query
+%% rather than a stream-version check. Returns
+%% `{error, {context_changed, MaxSeq}}` when any event matching
+%% `TagFilter` has seq > `SeqCutoff`.
+%%
+%% `TagFilter :: reckon_gater_types:tag_filter()` — see reckon-gater
+%% 2.3.0+ for the canonical type.
+%% `SeqCutoff :: integer()` — `-1` means "saw nothing yet".
+%%
+%% Events are transformed via the same `evoq_to_reckon_event/1` shim
+%% as `append/4`, so callers pass evoq-shaped events and the adapter
+%% bridges to the reckon_db payload shape.
+-spec append_if_no_tag_matches(atom(), term(), integer(), [map()]) ->
+      {ok, non_neg_integer()}
+    | {error, {context_changed, non_neg_integer()}}
+    | {error, no_events}
+    | {error, integrity_not_supported_in_dcb_v1}
+    | {error, term()}.
+append_if_no_tag_matches(StoreId, TagFilter, SeqCutoff, Events) ->
+    TransformedEvents = [evoq_to_reckon_event(E) || E <- Events],
+    case reckon_gater_api:append_if_no_tag_matches(
+           StoreId, TagFilter, SeqCutoff, TransformedEvents) of
+        {ok, LastSeq} ->
+            {ok, LastSeq};
         {error, _} = Error ->
             Error
     end.

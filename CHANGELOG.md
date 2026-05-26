@@ -5,6 +5,41 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-05-27
+
+### Added — DCB adapter passthrough (paired with reckon-db 3.1.0)
+
+`reckon_evoq_adapter:append_if_no_tag_matches/4` — thin passthrough
+to `reckon_gater_api:append_if_no_tag_matches/4` (reckon-gater 2.3.0+).
+Translates evoq-shaped events through the existing
+`evoq_to_reckon_event/1` shim, then routes the conditional-append via
+the gateway. Returns the same `{ok, LastSeq}` / `{error, {context_changed, MaxSeq}}`
+shape as the wire layer.
+
+```erlang
+reckon_evoq_adapter:append_if_no_tag_matches(
+    StoreId, TagFilter, SeqCutoff, Events).
+```
+
+`TagFilter` is `reckon_gater_types:tag_filter()`.
+`SeqCutoff` is `integer()` (`-1` = "saw nothing yet").
+
+### Changed — `reckon_gater` dep constraint
+
+`{reckon_gater, "~> 2.1"}` -> `{reckon_gater, "~> 2.3.0"}`. Required
+for the `append_if_no_tag_matches` API and the `tag_filter()` type.
+
+**Publish ordering**: reckon-gater 2.3.0 must be on hex before
+reckon-evoq 2.2.0 can be cleanly hex-published. For local development,
+add `_checkouts/reckon_gater` symlink.
+
+### Notes
+
+This release adds the adapter shim only. The user-facing
+`evoq_decision` behaviour that drives this primitive ships in evoq
+1.18.0 (P3.6). Apps that don't use DCB are unaffected by this
+release.
+
 ## [2.1.1] - 2026-05-16
 
 ### Fixed — Snapshot read path
