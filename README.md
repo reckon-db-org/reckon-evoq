@@ -2,7 +2,7 @@
 
 [![Hex.pm](https://img.shields.io/hexpm/v/reckon_evoq.svg)](https://hex.pm/packages/reckon_evoq)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/reckon_evoq)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow.svg)](https://buymeacoffee.com/beamologist)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow.svg)](https://buymeacoffee.com/rlefever)
 
 Adapter for connecting [evoq](https://codeberg.org/reckon-db-org/evoq) CQRS/ES framework to [reckon-db](https://codeberg.org/reckon-db-org/reckon-db) event store via [reckon-gater](https://codeberg.org/reckon-db-org/reckon-gater) gateway.
 
