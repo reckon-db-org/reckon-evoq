@@ -5,6 +5,28 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-05-27
+
+### Notes — Why 2.2.1 and not 2.2.0
+
+2.2.0 was tagged locally but never published to hex: a parallel docs
+fix shipped after the tag was cut, and the `reckon_gater` constraint
+was tightened to `~> 2.3.0` (only 2.3.x). Both fold into 2.2.1, paired
+with `reckon_gater 2.3.1` + `reckon_db 3.1.1`.
+
+### Changed — `reckon_gater` constraint widened
+
+`rebar.config`: `{reckon_gater, "~> 2.3.0"}` → `{reckon_gater, "~> 2.3"}`.
+Per workspace loose-constraint convention; allows coordinated minor-
+version updates without re-tagging consumers.
+
+### Fixed — EDoc-incompatible backticks in DCB passthrough doc
+
+The `append_if_no_tag_matches/4` `@doc` block used markdown-style
+backticks, which EDoc's parser rejected with
+`` `-quote ended unexpectedly ``. Replaced with plain text;
+`rebar3 ex_doc` now builds clean.
+
 ## [2.2.0] - 2026-05-27
 
 ### Added — DCB adapter passthrough (paired with reckon-db 3.1.0)
