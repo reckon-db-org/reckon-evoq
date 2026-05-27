@@ -107,19 +107,19 @@ append(StoreId, StreamId, ExpectedVersion, Events) ->
     end.
 
 %% @doc Conditionally append events under the DCB pseudo-stream
-%% (Dynamic Consistency Boundary — paired with reckon-db 3.1.0+).
+%% (Dynamic Consistency Boundary, paired with reckon-db 3.1.0+).
 %%
-%% Unlike `append/4`, the precondition is a tag-filter context query
+%% Unlike append/4, the precondition is a tag-filter context query
 %% rather than a stream-version check. Returns
-%% `{error, {context_changed, MaxSeq}}` when any event matching
-%% `TagFilter` has seq > `SeqCutoff`.
+%% {error, {context_changed, MaxSeq}} when any event matching
+%% TagFilter has seq above SeqCutoff.
 %%
-%% `TagFilter :: reckon_gater_types:tag_filter()` — see reckon-gater
-%% 2.3.0+ for the canonical type.
-%% `SeqCutoff :: integer()` — `-1` means "saw nothing yet".
+%% TagFilter is reckon_gater_types:tag_filter() (see reckon-gater
+%% 2.3.0+ for the canonical type).
+%% SeqCutoff is an integer; -1 means "saw nothing yet".
 %%
-%% Events are transformed via the same `evoq_to_reckon_event/1` shim
-%% as `append/4`, so callers pass evoq-shaped events and the adapter
+%% Events are transformed via the same evoq_to_reckon_event/1 shim
+%% as append/4, so callers pass evoq-shaped events and the adapter
 %% bridges to the reckon_db payload shape.
 -spec append_if_no_tag_matches(atom(), term(), integer(), [map()]) ->
       {ok, non_neg_integer()}
