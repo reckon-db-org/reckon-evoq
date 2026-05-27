@@ -10,10 +10,14 @@ Adapter for connecting [evoq](https://codeberg.org/reckon-db-org/evoq) CQRS/ES f
 
 reckon-evoq is a thin adapter layer that implements the evoq behavior interfaces:
 
-- `evoq_adapter` - Event store operations (append, read, delete)
+- `evoq_adapter` - Event store operations (append, read, delete) + DCB conditional-append `append_if_no_tag_matches/4` *(2.2.0+, paired with reckon-db 3.1.1)*
 - `evoq_snapshot_adapter` - Snapshot operations (save, read, delete)
 - `evoq_subscription_adapter` - Subscription operations (subscribe, ack, checkpoint)
 - `evoq_checkpoint_store` - Persistent projection checkpoints via ReckonDB snapshots
+
+The DCB passthrough is what backs evoq's `evoq_decision` behaviour — see
+[evoq's decisions guide](https://codeberg.org/reckon-db-org/evoq/src/branch/main/guides/decisions.md)
+for the high-level pattern.
 
 All operations are routed through reckon-gater, which provides:
 
