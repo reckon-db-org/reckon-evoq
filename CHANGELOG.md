@@ -5,6 +5,15 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-06-07
+
+### Changed — require `reckon_gater ~> 3.0`
+
+Widened the `reckon_gater` constraint from `~> 2.3` to `~> 3.0` so the
+adapter resolves alongside `reckon_db 4.0`. No code change — reckon-evoq
+uses append/read/subscribe, never the causation API that gater 3.0.0
+removed. `rebar3 compile` + eunit green against gater 3.0.0.
+
 ## [2.2.1] - 2026-05-27
 
 ### Notes — Why 2.2.1 and not 2.2.0
