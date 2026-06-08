@@ -40,6 +40,7 @@
     read_by_event_types/3,
     read_by_tags/3,
     read_by_tags/4,
+    read_by_metadata/3,
     version/2,
     exists/2,
     list_streams/1,
@@ -244,6 +245,23 @@ read_by_tags(StoreId, Tags, BatchSize) ->
     {ok, [evoq_event()]} | {error, term()}.
 read_by_tags(StoreId, Tags, Match, BatchSize) ->
     case reckon_gater_api:read_by_tags(StoreId, Tags, #{match => Match, batch_size => BatchSize}) of
+        {ok, {ok, Events}} when is_list(Events) ->
+            {ok, events_to_evoq(Events)};
+        {ok, Events} when is_list(Events) ->
+            {ok, events_to_evoq(Events)};
+        {error, _} = Error ->
+            Error
+    end.
+
+%% @doc Read events by a metadata key=value pair via gateway.
+%%
+%% The cross-cutting lineage primitive: events whose metadata Key equals
+%% Value (e.g. all events with causation_id == some event id). O(matches)
+%% when the store declared the {meta, Key} index, else a server-side scan.
+-spec read_by_metadata(atom(), binary(), binary()) ->
+    {ok, [evoq_event()]} | {error, term()}.
+read_by_metadata(StoreId, Key, Value) ->
+    case reckon_gater_api:read_by_metadata(StoreId, Key, Value) of
         {ok, {ok, Events}} when is_list(Events) ->
             {ok, events_to_evoq(Events)};
         {ok, Events} when is_list(Events) ->

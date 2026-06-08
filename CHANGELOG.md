@@ -5,6 +5,17 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-06-08
+
+### Added — `read_by_metadata/3` adapter passthrough
+
+`reckon_evoq_adapter:read_by_metadata(StoreId, Key, Value)` forwards to
+`reckon_gater_api:read_by_metadata/3` (reckon_gater 3.2.0 / reckon-db 5.0.0),
+returning events whose metadata `Key` equals `Value`, converted to evoq form.
+This is what backs `evoq_lineage:get_effects/get_correlated/get_conversation`
+(evoq 1.20.0) and the broader cross-cutting metadata query. Additive;
+`reckon_gater ~> 3.0` already admits 3.2.0.
+
 ## [2.3.0] - 2026-06-07
 
 ### Changed — require `reckon_gater ~> 3.0`
