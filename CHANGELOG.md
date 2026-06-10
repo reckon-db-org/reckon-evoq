@@ -5,6 +5,29 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-06-10
+
+### Fixed — reckon_gater requirement missing from the published package
+
+`reckon_evoq` 2.4.0 (and earlier) shipped to hex with **no
+`reckon_gater` requirement**: the `_checkouts/reckon_gater` dev
+symlink kept the dep out of `rebar.lock`, and rebar3_hex derives the
+published requirements from the lock. Consumers only received
+reckon_gater transitively (via reckon_db), and nothing enforced a
+compatible version for this adapter's direct `reckon_gater_api`
+calls.
+
+- `rebar.lock` now pins `reckon_gater` from hex; the package
+  declares `{reckon_gater, "~> 3.3"}`.
+- Floor raised to 3.3 to pull the security release (capability
+  checks on by default, real token verification; see reckon-gater
+  3.3.0 changelog).
+- rebar.config documents the publish-time footgun: remove
+  `_checkouts` symlinks before `rebar3 hex publish` and check the
+  requirements list in the confirmation prompt.
+
+No code changes; the adapter is API-compatible with gater 3.x.
+
 ## [2.4.0] - 2026-06-08
 
 ### Added — `read_by_metadata/3` adapter passthrough
