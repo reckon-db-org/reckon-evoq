@@ -5,6 +5,20 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-06-22
+
+### Changed — reckon_gater floor raised to 3.4
+
+Raises the `reckon_gater` dependency floor from `~> 3.3` to `~> 3.4` to pull
+in the `{event_type, binary()}` tag-filter leaf (reckon-gater 3.4.0).
+
+The adapter itself is unchanged: `append_if_no_tag_matches/4` passes
+`TagFilter` opaquely to `reckon_gater_api`, so `{event_type, T}` flows through
+without any adapter changes. The new filter shape is usable from day one via
+`evoq_decision:context_filter()` in evoq 1.21.0.
+
+No code changes; API-compatible with reckon_gater 3.x.
+
 ## [2.5.0] - 2026-06-10
 
 ### Fixed — reckon_gater requirement missing from the published package
