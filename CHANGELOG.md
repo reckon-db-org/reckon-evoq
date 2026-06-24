@@ -5,6 +5,30 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-06-25
+
+### Added — CCC payload-condition adapter callbacks (evoq Part A)
+
+Implements the four `evoq_adapter` callbacks evoq 1.22.0 added for CCC
+(payload-conditioned DCB decisions), delegating to reckon-gater:
+
+- `ccc_read_by_payload/4` → `reckon_gater_api:ccc_read_by_payload/4`
+- `ccc_read_by_payload_hash/4` → `reckon_gater_api:ccc_read_by_payload_hash/4`
+- `payload_indexes/1` → `reckon_gater_api:get_payload_indexes/1`
+- `payload_hash_indexes/1` → `reckon_gater_api:get_payload_hash_indexes/1`
+
+The two read functions return events mapped through `events_to_evoq/1` (same
+shape as `read_by_tags`/`read_by_event_types`); the introspection functions
+return the raw key lists evoq's decision runtime uses to fail loudly on an
+undeclared payload index.
+
+### Changed — dependency floors raised
+
+- `evoq` `~> 1.15` → `~> 1.22` (the CCC adapter callback contract).
+- `reckon_gater` `~> 3.4` → `~> 3.7` (`get_payload_indexes/1` and
+  `get_payload_hash_indexes/1` introspection; `ccc_read_by_payload*` reads
+  shipped in 3.6.0).
+
 ## [2.6.0] - 2026-06-22
 
 ### Changed — reckon_gater floor raised to 3.4

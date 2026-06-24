@@ -41,6 +41,10 @@
     read_by_tags/3,
     read_by_tags/4,
     read_by_metadata/3,
+    ccc_read_by_payload/4,
+    ccc_read_by_payload_hash/4,
+    payload_indexes/1,
+    payload_hash_indexes/1,
     version/2,
     exists/2,
     list_streams/1,
@@ -268,6 +272,57 @@ read_by_metadata(StoreId, Key, Value) ->
             {ok, events_to_evoq(Events)};
         {error, _} = Error ->
             Error
+    end.
+
+%% @doc Read DCB events whose payload field Key equals Value (CCC).
+%%
+%% Backed by reckon-db's {payload, Key} index. O(matches) when the
+%% store declared the index; an undeclared index returns a backend
+%% error, which evoq's decision runtime maps to payload_index_unavailable.
+-spec ccc_read_by_payload(atom(), binary(), binary(), pos_integer()) ->
+    {ok, [evoq_event()]} | {error, term()}.
+ccc_read_by_payload(StoreId, Key, Value, BatchSize) ->
+    case reckon_gater_api:ccc_read_by_payload(StoreId, Key, Value, BatchSize) of
+        {ok, {ok, Events}} when is_list(Events) ->
+            {ok, events_to_evoq(Events)};
+        {ok, Events} when is_list(Events) ->
+            {ok, events_to_evoq(Events)};
+        {error, _} = Error ->
+            Error
+    end.
+
+%% @doc Read DCB events matching a composite payload field set (CCC).
+%%
+%% Backed by reckon-db's {payload_hash, Keys} index. All Keys must
+%% match their Values; field order is ignored.
+-spec ccc_read_by_payload_hash(atom(), [binary()], [binary()], pos_integer()) ->
+    {ok, [evoq_event()]} | {error, term()}.
+ccc_read_by_payload_hash(StoreId, Keys, Values, BatchSize) ->
+    case reckon_gater_api:ccc_read_by_payload_hash(StoreId, Keys, Values, BatchSize) of
+        {ok, {ok, Events}} when is_list(Events) ->
+            {ok, events_to_evoq(Events)};
+        {ok, Events} when is_list(Events) ->
+            {ok, events_to_evoq(Events)};
+        {error, _} = Error ->
+            Error
+    end.
+
+%% @doc Payload field keys individually indexed in a store ({payload, Key}).
+-spec payload_indexes(atom()) -> {ok, [binary()]} | {error, term()}.
+payload_indexes(StoreId) ->
+    case reckon_gater_api:get_payload_indexes(StoreId) of
+        {ok, {ok, Keys}} when is_list(Keys) -> {ok, Keys};
+        {ok, Keys} when is_list(Keys) -> {ok, Keys};
+        {error, _} = Error -> Error
+    end.
+
+%% @doc Payload field key-sets hash-indexed in a store ({payload_hash, Keys}).
+-spec payload_hash_indexes(atom()) -> {ok, [[binary()]]} | {error, term()}.
+payload_hash_indexes(StoreId) ->
+    case reckon_gater_api:get_payload_hash_indexes(StoreId) of
+        {ok, {ok, KeySets}} when is_list(KeySets) -> {ok, KeySets};
+        {ok, KeySets} when is_list(KeySets) -> {ok, KeySets};
+        {error, _} = Error -> Error
     end.
 
 %% @doc Get current stream version via gateway.
