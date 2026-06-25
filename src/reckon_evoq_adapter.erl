@@ -203,14 +203,15 @@ read_all_batched(StoreId, StreamId, StartVersion, Direction, Acc) ->
         {ok, Events} when length(Events) < BatchSize ->
             {ok, lists:reverse(Events ++ Acc)};
         {ok, Events} ->
-            NextVersion = case Direction of
-                forward -> StartVersion + length(Events);
-                backward -> max(0, StartVersion - length(Events))
-            end,
+            NextVersion = next_batch_version(Direction, StartVersion, length(Events)),
             read_all_batched(StoreId, StreamId, NextVersion, Direction, Events ++ Acc);
         {error, _} = Error ->
             Error
     end.
+
+%% @private Next batch start version for forward/backward paging.
+next_batch_version(forward, StartVersion, N) -> StartVersion + N;
+next_batch_version(backward, StartVersion, N) -> max(0, StartVersion - N).
 
 %% @doc Read events by type via gateway.
 %%
@@ -500,18 +501,18 @@ subscribe(StoreId, Type, Selector, SubscriptionName, Opts) ->
     GaterType = subscription_type_to_gater(Type),
 
     %% Interpose a bridge that translates #event{} -> #evoq_event{}
-    RegistrationPid = case SubscriberPid of
-        undefined ->
-            undefined;
-        Pid when is_pid(Pid) ->
-            spawn_link(fun() -> subscription_bridge(Pid) end)
-    end,
+    RegistrationPid = registration_pid(SubscriberPid),
 
     reckon_gater_api:save_subscription(StoreId, GaterType, Selector, SubscriptionName, StartFrom, RegistrationPid),
 
     %% Generate subscription ID (gateway doesn't return one)
     SubscriptionId = generate_subscription_id(StoreId, SubscriptionName),
     {ok, SubscriptionId}.
+
+%% @private A bridge process per live subscriber; none for undefined.
+registration_pid(undefined) -> undefined;
+registration_pid(Pid) when is_pid(Pid) ->
+    spawn_link(fun() -> subscription_bridge(Pid) end).
 
 %% @doc Unsubscribe from events via gateway.
 -spec unsubscribe(atom(), binary()) -> ok | {error, term()}.
@@ -576,18 +577,18 @@ list(StoreId) ->
 -spec get_by_name(atom(), binary()) ->
     {ok, evoq_subscription()} | {error, not_found | term()}.
 get_by_name(StoreId, SubscriptionName) ->
-    case list(StoreId) of
-        {ok, Subscriptions} ->
-            case lists:filter(
-                fun(#evoq_subscription{subscription_name = N}) -> N =:= SubscriptionName end,
-                Subscriptions
-            ) of
-                [Sub | _] -> {ok, Sub};
-                [] -> {error, not_found}
-            end;
-        {error, _} = Error ->
-            Error
-    end.
+    find_by_name(list(StoreId), SubscriptionName).
+
+find_by_name({ok, Subscriptions}, SubscriptionName) ->
+    first_subscription(
+        lists:filter(
+            fun(#evoq_subscription{subscription_name = N}) -> N =:= SubscriptionName end,
+            Subscriptions));
+find_by_name({error, _} = Error, _SubscriptionName) ->
+    Error.
+
+first_subscription([Sub | _]) -> {ok, Sub};
+first_subscription([]) -> {error, not_found}.
 
 %%====================================================================
 %% Subscription Bridge

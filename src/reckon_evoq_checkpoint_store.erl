@@ -35,10 +35,7 @@ load(ProjectionName) ->
         {ok, Snapshots} when is_list(Snapshots) ->
             Latest = find_latest(Snapshots),
             Data = maps:get(data, Latest, #{}),
-            case maps:get(checkpoint, Data, undefined) of
-                undefined -> {error, not_found};
-                Checkpoint -> {ok, Checkpoint}
-            end;
+            checkpoint_result(maps:get(checkpoint, Data, undefined));
         {error, _} = Error ->
             Error
     end.
@@ -62,14 +59,23 @@ delete(ProjectionName) ->
     StreamId = stream_id(ProjectionName),
     case reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
         {ok, Snapshots} when is_list(Snapshots) ->
-            lists:foreach(fun(S) ->
-                Version = maps:get(version, S, 0),
-                reckon_gater_api:delete_snapshot(StoreId, StreamId, StreamId, Version)
-            end, Snapshots),
+            delete_all_snapshots(StoreId, StreamId, Snapshots),
             ok;
         {error, _} ->
             ok
     end.
+
+%% @private
+checkpoint_result(undefined) -> {error, not_found};
+checkpoint_result(Checkpoint) -> {ok, Checkpoint}.
+
+%% @private
+delete_all_snapshots(StoreId, StreamId, Snapshots) ->
+    lists:foreach(fun(S) -> delete_snapshot(StoreId, StreamId, S) end, Snapshots).
+
+delete_snapshot(StoreId, StreamId, S) ->
+    Version = maps:get(version, S, 0),
+    reckon_gater_api:delete_snapshot(StoreId, StreamId, StreamId, Version).
 
 %%====================================================================
 %% Internal
@@ -91,9 +97,10 @@ stream_id(ProjectionName) ->
 find_latest([Single]) ->
     Single;
 find_latest(Snapshots) ->
-    lists:foldl(fun(S, Acc) ->
-        case maps:get(version, S, 0) > maps:get(version, Acc, 0) of
-            true -> S;
-            false -> Acc
-        end
-    end, hd(Snapshots), tl(Snapshots)).
+    lists:foldl(fun keep_later/2, hd(Snapshots), tl(Snapshots)).
+
+keep_later(S, Acc) ->
+    later_of(maps:get(version, S, 0) > maps:get(version, Acc, 0), S, Acc).
+
+later_of(true, S, _Acc) -> S;
+later_of(false, _S, Acc) -> Acc.
