@@ -4,20 +4,24 @@
 [![Hex Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/reckon_evoq)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow.svg)](https://buymeacoffee.com/rlefever)
 
-Adapter for connecting [evoq](https://codeberg.org/reckon-db-org/evoq) CQRS/ES framework to [reckon-db](https://codeberg.org/reckon-db-org/reckon-db) event store via [reckon-gater](https://codeberg.org/reckon-db-org/reckon-gater) gateway.
+Adapter for connecting the [evoq](https://codeberg.org/reckon-db-org/evoq) CQRS/ES framework to a [reckon-db](https://codeberg.org/reckon-db-org/reckon-db) event store, reached through the [reckon-gater](https://codeberg.org/reckon-db-org/reckon-gater) gateway API.
+
+reckon-evoq depends on `evoq` and `reckon_gater` only. It does **not** depend on `reckon_db`: it reaches the store through the gater API (see [Reckon stack](#reckon-stack)).
 
 ## Overview
 
 reckon-evoq is a thin adapter layer that implements the evoq behavior interfaces:
 
-- `evoq_adapter` - Event store operations (append, read, delete) + DCB conditional-append `append_if_no_tag_matches/4` *(2.2.0+, paired with reckon-db 3.1.1)*
+- `evoq_adapter` - Event store operations (append, read, delete), DCB conditional-append `append_if_no_tag_matches/4` *(2.2.0+, paired with reckon-db 3.1.1)*, and the CCC payload-condition callbacks `ccc_read_by_payload/4`, `ccc_read_by_payload_hash/4`, `payload_indexes/1`, `payload_hash_indexes/1` *(2.7.0+, paired with evoq 1.22 / reckon-gater 3.7)*
 - `evoq_snapshot_adapter` - Snapshot operations (save, read, delete)
 - `evoq_subscription_adapter` - Subscription operations (subscribe, ack, checkpoint)
 - `evoq_checkpoint_store` - Persistent projection checkpoints via ReckonDB snapshots
 
-The DCB passthrough is what backs evoq's `evoq_decision` behaviour — see
+Every callback is a thin translation: it maps evoq-shaped terms to the gater types, calls `reckon_gater_api`, and maps the result back through `events_to_evoq/1` and friends. The adapter holds no state and runs no logic of its own.
+
+The DCB passthrough is what backs evoq's `evoq_decision` behaviour, see
 [evoq's decisions guide](https://codeberg.org/reckon-db-org/evoq/src/branch/main/guides/decisions.md)
-for the high-level pattern.
+for the high-level pattern. The CCC callbacks extend that to payload-conditioned decisions: declared `{payload, Key}` / `{payload_hash, [Keys]}` indexes drive conditional reads, and the introspection callbacks let evoq's decision runtime fail loudly on an undeclared payload index.
 
 All operations are routed through reckon-gater, which provides:
 
@@ -31,17 +35,31 @@ Add to your `rebar.config`:
 
 ```erlang
 {deps, [
-    {reckon_evoq, "~> 1.3"}
+    {reckon_evoq, "~> 2.7"}
 ]}.
 ```
+
+### Versions
+
+| Component | Version |
+|---|---|
+| `reckon_evoq` (this repo) | 2.7.0 |
+| `evoq` (dep) | ~> 1.22 |
+| `reckon_gater` (dep) | ~> 3.7 |
+| `telemetry` (dep) | ~> 1.3 |
+| Erlang/OTP | 27+ |
+
+reckon-evoq depends on `evoq` and `reckon_gater` directly. The underlying
+`reckon_db` event store must be running and reachable through the gateway, but
+is **not** a build dependency of this adapter.
 
 ## Dependencies
 
 This adapter requires:
 
-- **evoq** >= 1.0.0 - CQRS/ES framework with behavior definitions
-- **reckon-gater** >= 1.0.0 - Gateway API for load balancing and retry
-- **reckon-db** >= 1.0.0 - The underlying event store (must be running)
+- **evoq** ~> 1.22 - CQRS/ES framework with the behavior definitions (including the CCC payload-condition callbacks added in 1.22)
+- **reckon-gater** ~> 3.7 - Gateway API for load balancing, retry, and the `ccc_read_by_payload*` / `get_payload_indexes` surface
+- **reckon-db** (runtime) - The underlying event store, reached through the gateway; not a direct build dependency of reckon-evoq
 
 ## Quick Start
 
@@ -108,6 +126,40 @@ reckon_evoq_adapter:list_streams(StoreId).
 %% Delete a stream
 reckon_evoq_adapter:delete_stream(StoreId, StreamId).
 %% Returns: ok | {error, Reason}
+```
+
+### Conditional Append, DCB and CCC
+
+```erlang
+%% DCB conditional append: append only if no event matches TagFilter past SeqCutoff
+reckon_evoq_adapter:append_if_no_tag_matches(StoreId, TagFilter, SeqCutoff, Events).
+%% TagFilter: reckon_gater_types:tag_filter()  SeqCutoff: integer() (-1 = saw nothing)
+%% Returns: {ok, LastSeq} | {error, {context_changed, MaxSeq}}
+
+%% CCC payload-conditioned reads (2.7.0+, evoq 1.22 / reckon-gater 3.7)
+reckon_evoq_adapter:ccc_read_by_payload(StoreId, Key, Value, BatchSize).
+reckon_evoq_adapter:ccc_read_by_payload_hash(StoreId, Keys, Values, BatchSize).
+%% Keys/Values: equal-length [binary()]  BatchSize: pos_integer()
+%% Returns: {ok, [Event]} | {error, Reason}
+
+%% CCC index introspection (used by evoq's decision runtime)
+reckon_evoq_adapter:payload_indexes(StoreId).
+reckon_evoq_adapter:payload_hash_indexes(StoreId).
+%% Returns: the declared payload / payload-hash index key lists
+```
+
+### Cross-Cutting Queries
+
+```erlang
+%% Read events by tags across all streams
+reckon_evoq_adapter:read_by_tags(StoreId, Tags, BatchSize).
+reckon_evoq_adapter:read_by_tags(StoreId, Tags, Match, BatchSize).
+%% Tags: [binary()]  Match: any | all  BatchSize: pos_integer()
+%% Returns: {ok, [Event]} | {error, Reason}
+
+%% Read events whose metadata Key equals Value
+reckon_evoq_adapter:read_by_metadata(StoreId, Key, Value).
+%% Returns: {ok, [Event]} | {error, Reason}
 ```
 
 ### Snapshot Operations
@@ -233,6 +285,20 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 - [evoq](https://codeberg.org/reckon-db-org/evoq) - CQRS/ES framework
 - [reckon-db](https://codeberg.org/reckon-db-org/reckon-db) - BEAM-native Event Store
 - [reckon-gater](https://codeberg.org/reckon-db-org/reckon-gater) - Gateway API
+
+## Reckon stack
+
+reckon-evoq is one library in the Reckon event-sourcing ecosystem. In dependency order (a library only knows about the ones above it):
+
+- **[reckon-proto](https://codeberg.org/reckon-db-org/reckon-proto)**: the wire-contract protobufs; source of truth for the gateway surface.
+- **[reckon-gater](https://codeberg.org/reckon-db-org/reckon-gater)**: shared types and protocols; no Reckon dependencies.
+- **[reckon-db](https://codeberg.org/reckon-db-org/reckon-db)**: BEAM-native event store. Depends on reckon_gater, khepri, ra.
+- **[reckon-nifs](https://codeberg.org/reckon-db-org/reckon-nifs)**: standalone Rust NIF helpers with pure-Erlang fallbacks.
+- **[evoq](https://codeberg.org/reckon-db-org/evoq)**: standalone CQRS/event-sourcing framework; no Reckon dependencies.
+- **reckon-evoq (this repo)**: the adapter wiring evoq to a Reckon store. Depends on evoq and reckon_gater; not on reckon_db (reaches the store through the gater API).
+- **[reckon-gateway](https://codeberg.org/reckon-db-org/reckon-gateway)**: gRPC + HTTP/JSON ingress. Consumes reckon_gater; can embed reckon_db or federate remote clusters.
+- **[reckon-go](https://codeberg.org/reckon-db-org/reckon-go)**: the Go client; talks to reckon-gateway.
+- **reckon-portal**: docs and landing site ([reckon-internal/reckon-portal](https://codeberg.org/reckon-internal/reckon-portal)).
 
 ## License
 
