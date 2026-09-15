@@ -25,7 +25,13 @@
 %%====================================================================
 
 %% @doc Load the checkpoint for a projection.
--spec load(atom()) -> {ok, non_neg_integer()} | {error, not_found | term()}.
+%%
+%% The checkpoint is stored and returned verbatim: a projection's
+%% non-negative integer version, or the checkpointed event handler's
+%% {Offset, {epoch_us, stream_id, version}} tuple. It is kept in the
+%% snapshot's data map, so its term (and therefore its order) survives the
+%% round trip unchanged.
+-spec load(atom()) -> {ok, evoq_checkpoint_store:checkpoint()} | {error, not_found | term()}.
 load(ProjectionName) ->
     StoreId = store_id(),
     StreamId = stream_id(ProjectionName),
@@ -41,16 +47,23 @@ load(ProjectionName) ->
     end.
 
 %% @doc Save a checkpoint for a projection.
--spec save(atom(), non_neg_integer()) -> ok | {error, term()}.
+%%
+%% The checkpoint is stored in the snapshot's data map verbatim. The
+%% snapshot's VERSION is a separate monotonic timestamp, NOT the checkpoint
+%% value: a checkpoint may be an {Offset, OrderKey} tuple, which is not a
+%% snapshot version, and even an integer checkpoint should not double as
+%% the version. find_latest/1 then still selects the newest save.
+-spec save(atom(), evoq_checkpoint_store:checkpoint()) -> ok | {error, term()}.
 save(ProjectionName, Checkpoint) ->
     StoreId = store_id(),
     StreamId = stream_id(ProjectionName),
+    SnapshotVersion = erlang:system_time(nanosecond),
     SnapshotRecord = #{
         data => #{checkpoint => Checkpoint},
         metadata => #{saved_at => erlang:system_time(millisecond)},
         timestamp => erlang:system_time(millisecond)
     },
-    reckon_gater_api:record_snapshot(StoreId, StreamId, StreamId, Checkpoint, SnapshotRecord).
+    reckon_gater_api:record_snapshot(StoreId, StreamId, StreamId, SnapshotVersion, SnapshotRecord).
 
 %% @doc Delete the checkpoint for a projection.
 -spec delete(atom()) -> ok | {error, term()}.
