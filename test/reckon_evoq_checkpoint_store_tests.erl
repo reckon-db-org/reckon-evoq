@@ -27,6 +27,7 @@ teardown(_) ->
 checkpoint_store_test_() ->
     {foreach, fun setup/0, fun teardown/1, [
         fun save_records_snapshot/0,
+        fun round_trip_preserves_tuple_order/0,
         fun load_returns_checkpoint/0,
         fun load_returns_not_found_when_empty/0,
         fun load_finds_latest_version/0,
@@ -41,13 +42,52 @@ checkpoint_store_test_() ->
 %%====================================================================
 
 save_records_snapshot() ->
+    %% The snapshot VERSION is a monotonic timestamp, not the checkpoint
+    %% value; the checkpoint lives in the data map verbatim.
     meck:expect(reckon_gater_api, record_snapshot,
-        fun(test_store, StreamId, StreamId, 42, Record) ->
+        fun(test_store, StreamId, StreamId, Version, Record) ->
             ?assertMatch(<<"projection-checkpoint-", _/binary>>, StreamId),
+            ?assert(is_integer(Version)),
             ?assertEqual(42, maps:get(checkpoint, maps:get(data, Record))),
             ok
         end),
     ?assertEqual(ok, reckon_evoq_checkpoint_store:save(my_projection, 42)),
+    ?assert(meck:validate(reckon_gater_api)).
+
+%% Check 2: the {epoch_us, stream_id, version} order key survives a store
+%% and reload without changing its term or its order. Two keys that tie on
+%% epoch_us but differ in stream_id and version must still compare the same
+%% way after a round trip. Models the store faithfully: record_snapshot
+%% keeps whatever data it is handed, list_snapshots returns it back.
+round_trip_preserves_tuple_order() ->
+    Table = ets:new(round_trip, [set, public]),
+    meck:expect(reckon_gater_api, record_snapshot,
+        fun(test_store, StreamId, StreamId, _Version, Record) ->
+            ets:insert(Table, {StreamId, maps:get(checkpoint, maps:get(data, Record))}),
+            ok
+        end),
+    meck:expect(reckon_gater_api, list_snapshots,
+        fun(test_store, _SourceId, StreamId) ->
+            case ets:lookup(Table, StreamId) of
+                [{_, Checkpoint}] -> {ok, [#{version => 1, data => #{checkpoint => Checkpoint}}]};
+                [] -> {ok, []}
+            end
+        end),
+
+    KeyA = {100, <<"stream-a">>, 1},
+    KeyB = {100, <<"stream-b">>, 2},
+    ?assert(KeyA < KeyB),
+
+    ok = reckon_evoq_checkpoint_store:save(proj_a, {5, KeyA}),
+    ok = reckon_evoq_checkpoint_store:save(proj_b, {5, KeyB}),
+    {ok, ReloadedA} = reckon_evoq_checkpoint_store:load(proj_a),
+    {ok, ReloadedB} = reckon_evoq_checkpoint_store:load(proj_b),
+
+    ?assertEqual({5, KeyA}, ReloadedA),
+    ?assertEqual({5, KeyB}, ReloadedB),
+    ?assert(ReloadedA < ReloadedB),
+
+    ets:delete(Table),
     ?assert(meck:validate(reckon_gater_api)).
 
 load_returns_checkpoint() ->
