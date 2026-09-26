@@ -5,6 +5,33 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.1] - 2026-09-26
+
+### Fixed — snapshots read back with empty data and metadata
+
+`save/5` hands reckon-gater `#{data, metadata, timestamp}`. Since reckon-db
+5.5.2 (2026-07-01) the gateway worker unwraps that and stores the user's data
+in the snapshot's own `data` field and the metadata in its `metadata` field.
+`read/2` and `read_at_version/3` still unwrapped a second time
+(`maps:get(data, UserData, #{})`), so every snapshot came back with
+`data = #{}` and `metadata = #{}`. An aggregate restored from a snapshot started
+from an empty map: evoq snapshots every 100 events, so every aggregate past
+that point was reloaded wrong, and one whose `from_snapshot/1` matches on its
+fields (mcl-victron's device aggregate) crashed on load. reckon-e2e's
+`adapters_produce_equivalent_outcomes` caught it against a real store once
+that suite could compile again.
+
+The read takes data and metadata from the record's own fields. A snapshot
+written before reckon-db 5.5.2 holds the whole wrapper in `data` and is still
+read correctly: it is recognised by exactly the keys `data`, `metadata` and
+`timestamp`, in the record and in the gateway's map shape.
+
+### Also in this release
+
+The first release through CI (lint, eunit, Dialyzer ratchet, and a
+tag-to-release publish workflow, OTP 28.4.3), and every repository reference
+pointing at GitHub.
+
 ## [2.7.0] - 2026-06-25
 
 ### Added — CCC payload-condition adapter callbacks (evoq Part A)

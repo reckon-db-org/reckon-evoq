@@ -458,27 +458,42 @@ snapshot_version(#snapshot{version = V})       -> V;
 snapshot_version(M) when is_map(M)             -> maps:get(version, M, 0).
 
 %% @private Translate a gater snapshot (record or map) into the
-%% evoq-side `#evoq_snapshot{}'. The record-shape stores user data
-%% wrapped under `data', `metadata', `timestamp' keys (see save/5),
-%% so unwrap from the outer record/map. anchor_hash and mac (storage-
-%% only) are intentionally not propagated.
-gater_to_evoq_snapshot(StreamId, #snapshot{version = V, data = Wrapper})
-        when is_map(Wrapper) ->
-    #evoq_snapshot{
-        stream_id = StreamId,
-        version   = V,
-        data      = maps:get(data, Wrapper, #{}),
-        metadata  = maps:get(metadata, Wrapper, #{}),
-        timestamp = maps:get(timestamp, Wrapper, 0)
-    };
+%% evoq-side `#evoq_snapshot{}'. anchor_hash and mac (storage-only) are
+%% intentionally not propagated.
+%%
+%% save/5 hands the gateway #{data, metadata, timestamp}. Since reckon-db
+%% 5.5.2 the gateway worker unwraps it, so the record's own `data' and
+%% `metadata' fields hold what was saved. This read unwrapped them a second
+%% time, `maps:get(data, UserData, #{})', and every snapshot came back with
+%% empty data and metadata. A snapshot written before 5.5.2 still holds the
+%% whole wrapper in `data' (metadata lost); it is recognised by that exact
+%% key set.
+gater_to_evoq_snapshot(StreamId, #snapshot{version = V, data = Data, metadata = Meta,
+                                           timestamp = Ts}) ->
+    record_snapshot(StreamId, V, legacy_wrapper(Data), Data, Meta, Ts);
 gater_to_evoq_snapshot(StreamId, M) when is_map(M) ->
-    #evoq_snapshot{
-        stream_id = StreamId,
-        version   = maps:get(version, M, 0),
-        data      = maps:get(data, M, #{}),
-        metadata  = maps:get(metadata, M, #{}),
-        timestamp = maps:get(timestamp, M, 0)
-    }.
+    Data = maps:get(data, M, #{}),
+    record_snapshot(StreamId, maps:get(version, M, 0), legacy_wrapper(Data), Data,
+                    maps:get(metadata, M, #{}), maps:get(timestamp, M, 0)).
+
+%% A pre-5.5.2 record: the save/5 wrapper sits in `data'.
+record_snapshot(StreamId, V, true, #{data := D, metadata := M, timestamp := T}, _Meta, _Ts) ->
+    #evoq_snapshot{stream_id = StreamId, version = V, data = D, metadata = M, timestamp = T};
+%% What reckon-db 5.5.2+ stores: data and metadata in their own fields.
+record_snapshot(StreamId, V, false, Data, Meta, Ts) ->
+    #evoq_snapshot{stream_id = StreamId, version = V, data = Data,
+                   metadata = empty_if_undefined(Meta), timestamp = zero_if_undefined(Ts)}.
+
+legacy_wrapper(Data) when is_map(Data) ->
+    lists:sort(maps:keys(Data)) =:= [data, metadata, timestamp];
+legacy_wrapper(_Data) ->
+    false.
+
+empty_if_undefined(undefined) -> #{};
+empty_if_undefined(Meta) -> Meta.
+
+zero_if_undefined(undefined) -> 0;
+zero_if_undefined(Ts) -> Ts.
 
 %%====================================================================
 %% Subscription Operations

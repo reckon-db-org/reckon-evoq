@@ -43,7 +43,7 @@ Add to your `rebar.config`:
 
 | Component | Version |
 |---|---|
-| `reckon_evoq` (this repo) | 2.7.0 |
+| `reckon_evoq` (this repo) | 2.7.1 |
 | `evoq` (dep) | ~> 1.22 |
 | `reckon_gater` (dep) | ~> 3.7 |
 | `telemetry` (dep) | ~> 1.3 |
