@@ -64,8 +64,6 @@ delete(ProjectionName) ->
 checkpoint_result(undefined) -> {error, not_found};
 checkpoint_result(Checkpoint) -> {ok, Checkpoint}.
 
-%% @private
-
 %%====================================================================
 %% Internal
 %%====================================================================
@@ -80,5 +78,3 @@ store_id() ->
 stream_id(ProjectionName) ->
     NameBin = atom_to_binary(ProjectionName),
     <<"projection-checkpoint-", NameBin/binary>>.
-
-%% @private Find the snapshot with the highest version.

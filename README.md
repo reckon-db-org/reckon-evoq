@@ -43,7 +43,7 @@ Add to your `rebar.config`:
 
 | Component | Version |
 |---|---|
-| `reckon_evoq` (this repo) | 2.7.1 |
+| `reckon_evoq` (this repo) | 2.7.2 |
 | `evoq` (dep) | ~> 1.22 |
 | `reckon_gater` (dep) | ~> 3.7 |
 | `telemetry` (dep) | ~> 1.3 |
@@ -180,7 +180,7 @@ reckon_evoq_adapter:read_at_version(StoreId, StreamId, Version).
 %% reckon-db 5.5.2+ stores a snapshot's data and metadata in their own
 %% fields; older stores (and rows written by them) keep the whole
 %% #{data, metadata, timestamp} wrapper in data, and are read through that
-%% shape. Use 2.7.1 or later with any reckon-db.
+%% shape. Use 2.7.2 or later with any reckon-db (2.7.1 was never published).
 
 %% Delete all snapshots for stream
 reckon_evoq_adapter:delete(StoreId, StreamId).

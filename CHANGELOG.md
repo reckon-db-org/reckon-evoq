@@ -5,7 +5,24 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.7.1] - 2026-09-26
+## [2.7.2] - 2026-09-26
+
+The release of the 2.7.1 fixes below. **2.7.1 was tagged and never
+published**: `rebar3 hex build` failed at edoc on two `%% @private` tags left
+dangling in `reckon_evoq_checkpoint_store.erl` when the helpers they belonged
+to were removed, and nothing before the tag ran edoc. The tag stays; hex
+goes from 2.7.0 to 2.7.2.
+
+### Fixed
+
+- The dangling `@private` tags are gone, so the docs build.
+
+### Added — CI builds the package and docs on every push
+
+`lint-and-test` runs `rebar3 hex build`, the same build `publish-hex` runs,
+so a docs break fails on main instead of after a release tag.
+
+## [2.7.1] - 2026-09-26 (tagged, not published)
 
 ### Fixed — snapshots read back with empty data and metadata
 
