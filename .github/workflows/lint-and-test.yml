@@ -107,6 +107,13 @@ jobs:
         if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         run: rebar3 lint
 
+      # The package and its docs, exactly as publish-hex.yml builds them.
+      # edoc/ex_doc run only here and at publish time; a docs break (2.7.1:
+      # a dangling @private) otherwise surfaced only after the tag.
+      - name: Package and docs build (as at publish)
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: rebar3 hex build
+
       - name: EUnit
         if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         run: rebar3 eunit
