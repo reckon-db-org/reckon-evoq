@@ -20,25 +20,28 @@
 
 -export([load/1, save/2, delete/1]).
 
+-include_lib("evoq/include/evoq_types.hrl").
+
 %%====================================================================
 %% evoq_checkpoint_store callbacks
 %%====================================================================
 
 %% @doc Load the checkpoint for a projection.
+%% Read through the adapter, which picks the latest snapshot and reads both
+%% what reckon-db 5.5.2+ returns (a #snapshot{} record, data in its own
+%% field) and a checkpoint saved before 5.5.2 (the save/2 wrapper in data).
+%% This read maps:get on the reply directly, which is a record, so it crashed
+%% with badmap and a projection using this store could not start.
 -spec load(atom()) -> {ok, non_neg_integer()} | {error, not_found | term()}.
 load(ProjectionName) ->
-    StoreId = store_id(),
-    StreamId = stream_id(ProjectionName),
-    case reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
-        {ok, []} ->
-            {error, not_found};
-        {ok, Snapshots} when is_list(Snapshots) ->
-            Latest = find_latest(Snapshots),
-            Data = maps:get(data, Latest, #{}),
-            checkpoint_result(maps:get(checkpoint, Data, undefined));
-        {error, _} = Error ->
-            Error
-    end.
+    loaded(reckon_evoq_adapter:read(store_id(), stream_id(ProjectionName))).
+
+loaded({ok, #evoq_snapshot{data = Data}}) when is_map(Data) ->
+    checkpoint_result(maps:get(checkpoint, Data, undefined));
+loaded({ok, #evoq_snapshot{}}) ->
+    {error, not_found};
+loaded({error, _} = Error) ->
+    Error.
 
 %% @doc Save a checkpoint for a projection.
 -spec save(atom(), non_neg_integer()) -> ok | {error, term()}.
@@ -55,27 +58,13 @@ save(ProjectionName, Checkpoint) ->
 %% @doc Delete the checkpoint for a projection.
 -spec delete(atom()) -> ok | {error, term()}.
 delete(ProjectionName) ->
-    StoreId = store_id(),
-    StreamId = stream_id(ProjectionName),
-    case reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId) of
-        {ok, Snapshots} when is_list(Snapshots) ->
-            delete_all_snapshots(StoreId, StreamId, Snapshots),
-            ok;
-        {error, _} ->
-            ok
-    end.
+    reckon_evoq_adapter:delete(store_id(), stream_id(ProjectionName)).
 
 %% @private
 checkpoint_result(undefined) -> {error, not_found};
 checkpoint_result(Checkpoint) -> {ok, Checkpoint}.
 
 %% @private
-delete_all_snapshots(StoreId, StreamId, Snapshots) ->
-    lists:foreach(fun(S) -> delete_snapshot(StoreId, StreamId, S) end, Snapshots).
-
-delete_snapshot(StoreId, StreamId, S) ->
-    Version = maps:get(version, S, 0),
-    reckon_gater_api:delete_snapshot(StoreId, StreamId, StreamId, Version).
 
 %%====================================================================
 %% Internal
@@ -93,14 +82,3 @@ stream_id(ProjectionName) ->
     <<"projection-checkpoint-", NameBin/binary>>.
 
 %% @private Find the snapshot with the highest version.
--spec find_latest([map()]) -> map().
-find_latest([Single]) ->
-    Single;
-find_latest(Snapshots) ->
-    lists:foldl(fun keep_later/2, hd(Snapshots), tl(Snapshots)).
-
-keep_later(S, Acc) ->
-    later_of(maps:get(version, S, 0) > maps:get(version, Acc, 0), S, Acc).
-
-later_of(true, S, _Acc) -> S;
-later_of(false, _S, Acc) -> Acc.

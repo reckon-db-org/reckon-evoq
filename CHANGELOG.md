@@ -16,15 +16,32 @@ in the snapshot's own `data` field and the metadata in its `metadata` field.
 (`maps:get(data, UserData, #{})`), so every snapshot came back with
 `data = #{}` and `metadata = #{}`. An aggregate restored from a snapshot started
 from an empty map: evoq snapshots every 100 events, so every aggregate past
-that point was reloaded wrong, and one whose `from_snapshot/1` matches on its
-fields (mcl-victron's device aggregate) crashed on load. reckon-e2e's
+that point was reloaded wrong, and ones whose `from_snapshot/1` match on
+their fields (the mcl-victron and mcl-bookclub aggregates) crash on load. reckon-e2e's
 `adapters_produce_equivalent_outcomes` caught it against a real store once
 that suite could compile again.
 
 The read takes data and metadata from the record's own fields. A snapshot
-written before reckon-db 5.5.2 holds the whole wrapper in `data` and is still
-read correctly: it is recognised by exactly the keys `data`, `metadata` and
-`timestamp`, in the record and in the gateway's map shape.
+written by a reckon-db older than 5.5.2 holds the whole wrapper in `data` and
+is still read correctly: it is recognised by exactly the keys `data`,
+`metadata` and `timestamp`, in the record and in the gateway's map shape. That
+also keeps consumers resolving reckon-db 5.4.x to 5.5.1 working. The one
+collision: an aggregate whose `snapshot/1` returns a map with exactly those
+three keys and nothing else would be read as the wrapper; no known aggregate
+does, and a test names the case. A snapshot whose data is a binary (allowed by
+the record's type) crashed the read with `function_clause`; it is returned as
+the data now.
+
+### Fixed — the checkpoint store crashed on every load
+
+`reckon_evoq_checkpoint_store:load/1` and `delete/1` called `maps:get` on the
+`list_snapshots` reply, which is a list of `#snapshot{}` records, so they
+raised `badmap`: a projection started with
+`checkpoint_store => reckon_evoq_checkpoint_store` saved its first checkpoint
+and then could not start again. Its tests were green because they mocked
+maps. Both now go through the adapter's `read/2` and `delete/2`, so they read
+the same shapes, including a checkpoint saved before reckon-db 5.5.2; the
+tests use records.
 
 ### Also in this release
 

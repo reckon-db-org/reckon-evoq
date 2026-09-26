@@ -171,11 +171,16 @@ reckon_evoq_adapter:save(StoreId, StreamId, Version, Data, Metadata).
 
 %% Read latest snapshot
 reckon_evoq_adapter:read(StoreId, StreamId).
-%% Returns: {ok, #snapshot{}} | {error, not_found}
+%% Returns: {ok, #evoq_snapshot{}} | {error, not_found}
 
 %% Read snapshot at specific version
 reckon_evoq_adapter:read_at_version(StoreId, StreamId, Version).
-%% Returns: {ok, #snapshot{}} | {error, not_found}
+%% Returns: {ok, #evoq_snapshot{}} | {error, not_found}
+%%
+%% reckon-db 5.5.2+ stores a snapshot's data and metadata in their own
+%% fields; older stores (and rows written by them) keep the whole
+%% #{data, metadata, timestamp} wrapper in data, and are read through that
+%% shape. Use 2.7.1 or later with any reckon-db.
 
 %% Delete all snapshots for stream
 reckon_evoq_adapter:delete(StoreId, StreamId).

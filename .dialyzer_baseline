@@ -1,5 +1,5 @@
 # Known dialyzer findings, recorded as a ratchet. See scripts/dialyzer_ratchet.sh.
-# dialyzer reported 31 when this was written (files for lint, warnings for dialyzer).
+# dialyzer reported 30 when this was written (files for lint, warnings for dialyzer).
 # A new finding fails CI. A fixed finding should have its line deleted here.
 src/reckon_evoq_adapter.erl	013b62be0b6e	Type specification reckon_evoq_adapter:subscription_type_to_gater(evoq_subscription_type()) -> atom() is a sup
 src/reckon_evoq_adapter.erl	098c0ca3a238	The specification for reckon_evoq_adapter:delete_at_version/3 states that the function might also return {'err
@@ -30,5 +30,4 @@ src/reckon_evoq_adapter.erl	edc8d4f85111	The pattern {'ok', {'error', 'not_found
 src/reckon_evoq_adapter.erl	fdf8178222c7	The specification for reckon_evoq_adapter:delete_stream/2 states that the function might also return 'ok' but 
 src/reckon_evoq_checkpoint_store.erl	30ef0cd5fdf1	The specification for reckon_evoq_checkpoint_store:save/2 states that the function might also return {'error',
 src/reckon_evoq_checkpoint_store.erl	9a79079b9f02	Type specification reckon_evoq_checkpoint_store:stream_id(atom()) -> binary() is a supertype of the success ty
-src/reckon_evoq_checkpoint_store.erl	b7ee6a4158b9	Type specification reckon_evoq_checkpoint_store:find_latest([map()]) -> map() is a supertype of the success ty
 src/reckon_evoq_checkpoint_store.erl	c00b8e9ae7e9	The specification for reckon_evoq_checkpoint_store:delete/1 states that the function might also return {'error

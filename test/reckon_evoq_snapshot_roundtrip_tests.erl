@@ -32,7 +32,9 @@ snapshot_roundtrip_test_() ->
       {"latest, written before reckon-db 5.5.2", fun latest_legacy_shape/0},
       {"at a version, written before reckon-db 5.5.2", fun at_version_legacy_shape/0},
       {"the gateway's map shape", fun latest_map_shape/0},
-      {"the gateway's map shape, written before reckon-db 5.5.2", fun latest_legacy_map_shape/0}]}.
+      {"the gateway's map shape, written before reckon-db 5.5.2", fun latest_legacy_map_shape/0},
+      {"binary data", fun binary_data/0},
+      {"the known collision: user data shaped like the wrapper", fun wrapper_shaped_user_data/0}]}.
 
 %% What reckon_db_gateway_worker stores since 5.5.2: data and metadata in
 %% their own fields.
@@ -72,6 +74,24 @@ latest_legacy_map_shape() ->
             data => #{data => ?DATA, metadata => ?META, timestamp => 1700000000000}},
     meck:expect(reckon_gater_api, list_snapshots, fun(_, _, _) -> {ok, [Map]} end),
     assert_roundtrip(reckon_evoq_adapter:read(?STORE, ?STREAM)).
+
+%% The record allows binary data; the read crashed on it with function_clause.
+binary_data() ->
+    Snap = (current())#snapshot{data = <<"opaque">>},
+    meck:expect(reckon_gater_api, list_snapshots, fun(_, _, _) -> {ok, [Snap]} end),
+    {ok, S} = reckon_evoq_adapter:read(?STORE, ?STREAM),
+    ?assertEqual(<<"opaque">>, S#evoq_snapshot.data).
+
+%% The one trade-off of recognising the pre-5.5.2 wrapper by its key set: a
+%% current snapshot whose user data is a map with exactly the keys data,
+%% metadata and timestamp reads as the wrapper. Named here so it is a known
+%% limit, not a surprise.
+wrapper_shaped_user_data() ->
+    UserData = #{data => inner, metadata => #{m => 1}, timestamp => 5},
+    Snap = (current())#snapshot{data = UserData},
+    meck:expect(reckon_gater_api, list_snapshots, fun(_, _, _) -> {ok, [Snap]} end),
+    {ok, S} = reckon_evoq_adapter:read(?STORE, ?STREAM),
+    ?assertEqual(inner, S#evoq_snapshot.data).
 
 assert_roundtrip({ok, #evoq_snapshot{} = S}) ->
     ?assertEqual(?STREAM, S#evoq_snapshot.stream_id),

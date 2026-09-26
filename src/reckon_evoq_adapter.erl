@@ -470,17 +470,17 @@ snapshot_version(M) when is_map(M)             -> maps:get(version, M, 0).
 %% key set.
 gater_to_evoq_snapshot(StreamId, #snapshot{version = V, data = Data, metadata = Meta,
                                            timestamp = Ts}) ->
-    record_snapshot(StreamId, V, legacy_wrapper(Data), Data, Meta, Ts);
+    evoq_snapshot_from(StreamId, V, legacy_wrapper(Data), Data, Meta, Ts);
 gater_to_evoq_snapshot(StreamId, M) when is_map(M) ->
     Data = maps:get(data, M, #{}),
-    record_snapshot(StreamId, maps:get(version, M, 0), legacy_wrapper(Data), Data,
+    evoq_snapshot_from(StreamId, maps:get(version, M, 0), legacy_wrapper(Data), Data,
                     maps:get(metadata, M, #{}), maps:get(timestamp, M, 0)).
 
 %% A pre-5.5.2 record: the save/5 wrapper sits in `data'.
-record_snapshot(StreamId, V, true, #{data := D, metadata := M, timestamp := T}, _Meta, _Ts) ->
+evoq_snapshot_from(StreamId, V, true, #{data := D, metadata := M, timestamp := T}, _Meta, _Ts) ->
     #evoq_snapshot{stream_id = StreamId, version = V, data = D, metadata = M, timestamp = T};
 %% What reckon-db 5.5.2+ stores: data and metadata in their own fields.
-record_snapshot(StreamId, V, false, Data, Meta, Ts) ->
+evoq_snapshot_from(StreamId, V, false, Data, Meta, Ts) ->
     #evoq_snapshot{stream_id = StreamId, version = V, data = Data,
                    metadata = empty_if_undefined(Meta), timestamp = zero_if_undefined(Ts)}.
 
