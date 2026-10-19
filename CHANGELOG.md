@@ -5,6 +5,26 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2026-10-19
+
+### Added: new_stream_id/1, so evoq can mint a stream id through the adapter
+
+evoq 1.27.0 made `new_stream_id/1` an optional `evoq_adapter` callback, and
+this adapter implements it: it delegates to `reckon_gater_stream_id:new/1`,
+which is the one definition of the format (`<prefix>-<32 lowercase hex>`,
+UUIDv7, so `ORDER BY stream_id` is birth order).
+
+A service that needs a fresh aggregate id calls
+`evoq_event_store:new_stream_id(Prefix)` and never names `reckon_gater` to
+get one, which is what the mcl-chess referee needs for its game ids. The
+prefix may be an atom or a binary; a malformed prefix raises
+`{invalid_prefix, Prefix}` from the generator rather than minting an id the
+store would reject on append.
+
+The dependency floor does not move: the callback is optional in evoq, so
+this release builds and works against evoq 1.22 as before, and only a
+consumer on evoq 1.27.0 or later can reach the new call.
+
 ## [2.7.2] - 2026-09-26
 
 The release of the 2.7.1 fixes below. **2.7.1 was tagged and never
