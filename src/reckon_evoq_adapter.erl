@@ -48,7 +48,8 @@
     version/2,
     exists/2,
     list_streams/1,
-    delete_stream/2
+    delete_stream/2,
+    new_stream_id/1
 ]).
 
 %%====================================================================
@@ -355,6 +356,20 @@ delete_stream(StoreId, StreamId) ->
         ok -> ok;
         {error, _} = Error -> Error
     end.
+
+%% @doc Mint a fresh stream id in the store's own contract.
+%%
+%% evoq asks the adapter for this rather than minting one itself: the format
+%% (`<prefix>-<32 lowercase hex>`, UUIDv7 so ORDER BY stream_id is birth
+%% order) is reckon's, and reckon_gater_stream_id is its one definition. A
+%% caller reaches it as evoq_event_store:new_stream_id/1, so a service never
+%% names reckon_gater to get an aggregate id.
+%%
+%% A malformed prefix raises {invalid_prefix, Prefix}, from the generator:
+%% refusing loudly beats minting an id the store would reject on append.
+-spec new_stream_id(atom() | binary()) -> nonempty_binary().
+new_stream_id(Prefix) ->
+    reckon_gater_stream_id:new(Prefix).
 
 %%====================================================================
 %% Snapshot Operations
