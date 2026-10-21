@@ -26,6 +26,10 @@
 %% Included second - uses ifndef guards for shared macros
 -include_lib("evoq/include/evoq_types.hrl").
 
+%% The lineage keys evoq defines (evoq.hrl). They are the only metadata keys
+%% this adapter renames, in either direction.
+-define(RESERVED_LINEAGE_KEYS, [causation_id, correlation_id, conversation_id]).
+
 %%====================================================================
 %% evoq_adapter callbacks (Event Store Operations)
 %%====================================================================
@@ -264,6 +268,16 @@ read_by_tags(StoreId, Tags, Match, BatchSize) ->
 %% The cross-cutting lineage primitive: events whose metadata Key equals
 %% Value (e.g. all events with causation_id == some event id). O(matches)
 %% when the store declared the {meta, Key} index, else a server-side scan.
+%%
+%% THE KEY MUST BE A BINARY, and the match is on what the store holds. The
+%% adapter renames exactly the reserved lineage keys (causation_id,
+%% correlation_id, conversation_id) to their binary spelling on the way in,
+%% so ask for the binary "causation_id". An application's own metadata keys
+%% are stored exactly as the application wrote them, and the store's query
+%% takes a binary key only: an app key written as an atom is stored under the
+%% atom and CANNOT be found by this function at all - an atom Key is a
+%% function_clause in the gateway worker, not an empty result. Write the keys
+%% you intend to query as binaries.
 -spec read_by_metadata(atom(), binary(), binary()) ->
     {ok, [evoq_event()]} | {error, term()}.
 read_by_metadata(StoreId, Key, Value) ->
@@ -524,20 +538,44 @@ zero_if_undefined(Ts) -> Ts.
 -spec subscribe(atom(), evoq_subscription_type(), binary() | map(), binary(), map()) ->
     {ok, binary()} | {error, term()}.
 subscribe(StoreId, Type, Selector, SubscriptionName, Opts) ->
-    StartFrom = maps:get(start_from, Opts, 0),
-    SubscriberPid = maps:get(subscriber_pid, Opts, undefined),
+    case start_from_position(maps:get(start_from, Opts, origin)) of
+        {error, _} = Error ->
+            Error;
+        StartFrom ->
+            SubscriberPid = maps:get(subscriber_pid, Opts, undefined),
 
-    %% Map subscription type to gateway type atom
-    GaterType = subscription_type_to_gater(Type),
+            %% Map subscription type to gateway type atom
+            GaterType = subscription_type_to_gater(Type),
 
-    %% Interpose a bridge that translates #event{} -> #evoq_event{}
-    RegistrationPid = registration_pid(SubscriberPid),
+            %% Interpose a bridge that translates #event{} -> #evoq_event{}
+            RegistrationPid = registration_pid(SubscriberPid),
 
-    reckon_gater_api:save_subscription(StoreId, GaterType, Selector, SubscriptionName, StartFrom, RegistrationPid),
+            reckon_gater_api:save_subscription(StoreId, GaterType, Selector, SubscriptionName,
+                                               StartFrom, RegistrationPid),
 
-    %% Generate subscription ID (gateway doesn't return one)
-    SubscriptionId = generate_subscription_id(StoreId, SubscriptionName),
-    {ok, SubscriptionId}.
+            %% Generate subscription ID (gateway doesn't return one)
+            SubscriptionId = generate_subscription_id(StoreId, SubscriptionName),
+            {ok, SubscriptionId}
+    end.
+
+%% @private evoq's subscription adapters declare start_from as
+%% origin | current | {position, N}; reckon-db's subscription holds an
+%% integer offset. Passing the symbolic form straight through crashed
+%% reckon_db_subscriptions when it used it as a checkpoint.
+%%
+%% `current' has no integer that means it here - "only events from now on"
+%% is not "an offset" - so it is refused rather than silently started at 0,
+%% which would replay the whole store to a subscriber that asked not to.
+start_from_position(origin) ->
+    0;
+start_from_position({position, N}) when is_integer(N), N >= 0 ->
+    N;
+start_from_position(N) when is_integer(N), N >= 0 ->
+    N;
+start_from_position(current) ->
+    {error, {unsupported_start_from, current}};
+start_from_position(Other) ->
+    {error, {bad_start_from, Other}}.
 
 %% @private A bridge process per live subscriber; none for undefined.
 registration_pid(undefined) -> undefined;
@@ -557,13 +595,36 @@ unsubscribe(StoreId, SubscriptionId) ->
     end.
 
 %% @doc Acknowledge event via gateway.
+%%
+%% The gateway refuses an ack for a subscription that has been removed
+%% ({error, {subscription_not_found, _}}), which is a caller error worth
+%% seeing: the listening process is gone. The result is returned, not
+%% swallowed, because an ack that silently does nothing is how a checkpoint
+%% stops moving without anything saying so - and it is the caller that logs
+%% it (evoq's store subscription already does), so this does not log it a
+%% second time.
+%%
+%% The gateway answers {ok, _}, never a bare `ok', whatever its published
+%% spec says; counting that as a failure is how every ack looked broken.
 -spec ack(atom(), binary(), binary() | undefined, non_neg_integer()) ->
     ok | {error, term()}.
 ack(StoreId, SubscriptionName, _StreamId, Position) ->
-    %% Gateway ack expects an Event map, but we have position
-    %% Create a minimal event map with version as position
+    %% The gateway ack reads a map: the position, and optionally the stream
+    %% to acknowledge in. evoq acks the node's $all subscription, which has
+    %% no stream of its own.
     EventMap = #{version => Position},
-    reckon_gater_api:ack_event(StoreId, SubscriptionName, self(), EventMap),
+    ack_result(reckon_gater_api:ack_event(StoreId, SubscriptionName, self(), EventMap),
+               StoreId, SubscriptionName, Position).
+
+%% @private Any success answers ok, whatever the gateway wraps it in: the
+%% reply is `{ok, Term}` today and the published spec has said bare `ok`, so
+%% this deliberately does not enumerate the success shapes. The error is
+%% returned, not logged here as well: the evoq store subscription that calls
+%% this already logs a failed ack, and two warnings for one failure is noise
+%% that hides the next one.
+ack_result({error, _} = Error, _StoreId, _SubscriptionName, _Position) ->
+    Error;
+ack_result(_Success, _StoreId, _SubscriptionName, _Position) ->
     ok.
 
 %% @doc Get checkpoint for subscription via gateway.
@@ -665,7 +726,42 @@ subscription_type_to_gater(tags) -> by_tags.
 %% Type Translation (reckon_gater -> evoq)
 %%====================================================================
 
-%% @private Translate reckon_gater event to evoq event
+%% @private The reserved lineage keys, in the spelling evoq code uses.
+%%
+%% The same precedence as the write side, for the same reason: when a stored
+%% map carries BOTH spellings of a reserved key the ATOM wins, because the
+%% atom is what evoq stamped (a map written by 2.8.0 or earlier has exactly
+%% that pair, and the binary is the caller's copy). A fold would let map
+%% order decide, which for a small map means the binary - the caller's value
+%% - and that is the lineage the framework recorded being replaced.
+-spec restore_reserved_keys(map()) -> map().
+restore_reserved_keys(Metadata) when is_map(Metadata) ->
+    %% Both spellings out, the winner back in: leaving the binary beside the
+    %% atom hands a reader two answers for one question.
+    Base = maps:without(?RESERVED_LINEAGE_KEYS ++
+                            [reserved_key_binary(K) || K <- ?RESERVED_LINEAGE_KEYS],
+                        Metadata),
+    lists:foldl(fun(Key, Acc) -> restore_one(Key, Metadata, Acc) end,
+                Base, ?RESERVED_LINEAGE_KEYS).
+
+%% @private
+restore_one(Key, Metadata, Acc) ->
+    case {maps:find(Key, Metadata), maps:find(reserved_key_binary(Key), Metadata)} of
+        {{ok, Value}, _} -> Acc#{Key => Value};
+        {error, {ok, Value}} -> Acc#{Key => Value};
+        {error, error} -> Acc
+    end.
+
+%% @private Translate reckon_gater event to evoq event.
+%%
+%% Lineage keys come back as atoms. The store keeps metadata under the
+%% binary spelling - that is what the {meta, Key} index matches, and what
+%% evoq_to_reckon_event/1 writes - but an event delivered inside the BEAM is
+%% read by evoq code and by the guides, both of which spell the reserved keys
+%% as atoms (evoq.hrl defines them). evoq_lineage handles either; a handler
+%% matching #{correlation_id := C} does not. So the closed set evoq defines
+%% is translated on the way in, and every other key is left exactly as the
+%% store holds it.
 -spec event_to_evoq(event()) -> evoq_event().
 event_to_evoq(#event{
     event_id = EventId,
@@ -687,7 +783,7 @@ event_to_evoq(#event{
         stream_id = StreamId,
         version = Version,
         data = Data,
-        metadata = Metadata,
+        metadata = restore_reserved_keys(Metadata),
         tags = Tags,
         timestamp = Timestamp,
         epoch_us = EpochUs,
@@ -703,15 +799,61 @@ event_to_evoq(#event{
 events_to_evoq(Events) ->
     [event_to_evoq(E) || E <- Events].
 
-%% @private Passthrough for nested evoq events.
+%% @private Translate an evoq event to the map reckon-db stores.
 %%
 %% Since evoq 1.5.0, append_events produces already-nested maps with
-%% #{event_type, data, metadata} — no transformation needed.
+%% #{event_type, data, metadata}. The metadata keys are Erlang atoms in the
+%% BEAM (evoq builds them that way, see evoq.hrl's reserved lineage keys),
+%% and they are what evoq_lineage reads back.
+%%
+%% reckon-db, however, indexes and scans metadata by BINARY key: the
+%% {meta, <<"causation_id">>} index (reckon_db_index.erl) and the scan that
+%% answers read_by_metadata (reckon_db_streams.erl) both match the wire
+%% spelling. Handing the store atom keys meant every lineage field was
+%% written under a key the index could never match, so
+%% evoq_lineage:get_effects/2 and get_correlated/2 always answered []: the
+%% ids were in the store and unreachable.
 -spec evoq_to_reckon_event(map()) -> map().
 evoq_to_reckon_event(#{data := _, event_type := _} = Event) ->
-    Event;
+    binary_key_metadata(Event);
 evoq_to_reckon_event(#{<<"data">> := _, <<"event_type">> := _} = Event) ->
     Event.
+
+%% @private
+binary_key_metadata(#{metadata := Metadata} = Event) when is_map(Metadata) ->
+    Event#{metadata => binary_keys(Metadata)};
+binary_key_metadata(Event) ->
+    Event.
+
+%% @private Only the reserved lineage keys are rewritten, and only they are
+%% translated back on read. An application's own metadata keys are stored and
+%% returned exactly as the application wrote them: renaming those would mean
+%% an atom goes in and a binary comes back, which is the surprise this side
+%% of the adapter exists to avoid.
+%%
+%% When a map carries BOTH spellings of a reserved key, the atom wins. That
+%% is the one evoq itself stamped (`evoq_command:ensure_id/1', the PM's
+%% causation stamp); a `{<<"causation_id">>, ...}' sitting beside it is the
+%% caller's copy, and letting it win would overwrite the lineage the
+%% framework just recorded - silently, and only for the callers who happened
+%% to send one. A fold over the map would let map order decide, so the
+%% reserved keys are set last.
+binary_keys(Map) ->
+    Base = maps:without(?RESERVED_LINEAGE_KEYS, Map),
+    lists:foldl(fun(Key, Acc) -> put_reserved_binary(Key, Map, Acc) end,
+                Base, ?RESERVED_LINEAGE_KEYS).
+
+%% @private
+put_reserved_binary(Key, Map, Acc) ->
+    case maps:find(Key, Map) of
+        {ok, Value} -> Acc#{reserved_key_binary(Key) => Value};
+        error -> Acc
+    end.
+
+%% @private
+reserved_key_binary(causation_id) -> <<"causation_id">>;
+reserved_key_binary(correlation_id) -> <<"correlation_id">>;
+reserved_key_binary(conversation_id) -> <<"conversation_id">>.
 
 %% @private Generate subscription ID
 -spec generate_subscription_id(atom(), binary()) -> binary().

@@ -5,6 +5,107 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0] - 2026-10-21
+
+### Changed: lineage metadata is binary on the wire and atom-keyed in the BEAM (evoq#22)
+
+evoq 1.28.0 stamps every process-manager-issued command with the triggering
+event's `causation_id` and `correlation_id`. Those ids were in the store all
+along and unreachable: evoq builds metadata maps with **atom** keys, and
+reckon-db indexes and scans `{meta, <<"causation_id">>}` by **binary** key
+(`reckon_db_index.erl`, `reckon_db_streams.erl`). `evoq_to_reckon_event/1`
+passed the map through unchanged, so the index matched nothing and
+`evoq_lineage:get_effects/2` and `get_correlated/2` always answered `[]`.
+
+The adapter now rewrites **the reserved lineage keys and nothing else**
+(`causation_id`, `correlation_id`, `conversation_id` - the closed set
+`evoq.hrl` defines) to their binary spelling on append. Values are
+untouched, `data` is untouched, and a map that is already binary-keyed is
+passed through as it was. Events already in the store keep their atom keys
+and stay unqueryable; only new appends are indexed.
+
+**On the way back in, those same three keys are atoms again.** Without that
+the delivered metadata would depend on when an event was written: atom keys
+for old events, binaries for new ones, and a handler matching
+`#{correlation_id := C}` - the spelling evoq's guides use - would crash on
+every new event.
+
+An application's own metadata keys are **never touched in either direction**:
+an atom goes in, an atom comes back. Only the keys evoq itself defines are
+translated, and only because the store's index can only match the binary
+form of those.
+
+That asymmetry is the contract: binary on the wire, because that is what the
+`{meta, Key}` index matches; atoms in the BEAM, because that is what evoq
+code reads. It is why this is 2.9.0 and not a patch.
+
+### Fixed: start_from was passed to reckon-db as a symbolic value
+
+`subscribe/5` forwarded evoq's `start_from` option - `origin`, `current` or
+`{position, N}` - straight to `reckon_db_subscriptions`, which holds an
+integer offset and crashed on the symbolic form. It is mapped now: `origin`
+is 0, `{position, N}` is N, an integer is itself, and `current` is refused
+with `{error, {unsupported_start_from, current}}` rather than silently
+starting at 0 and replaying the whole store to a subscriber that asked for
+new events only.
+
+Anything that is not one of those is answered `{error, {bad_start_from,
+Value}}` rather than crashing with a `function_clause`, and `current` - which
+is a valid evoq value with no store equivalent - is answered
+`{error, {unsupported_start_from, current}}` instead of silently meaning 0,
+the whole log replayed at every restart. The start position is INCLUSIVE (the
+store's replay read starts at it): a subscriber that has consumed up to `C`
+asks for `{position, C + 1}`.
+
+### Fixed: a refused ack was discarded
+
+`ack/4` always answered `ok`, whatever the gateway said. An ack for a
+removed subscription answers `{error, {subscription_not_found, _}}` - the
+subscription is gone and its events will be redelivered on the next boot -
+and that error is returned now, because an ack that silently does nothing is
+how a checkpoint stops moving with nothing saying so. The adapter does not
+log it as well: the evoq store subscription that calls ack/4 logs a failed
+ack, and two warnings for one failure hide the next one.
+
+### Fixed: the read side had the same overwrite, in reverse
+
+A stored metadata map that carries both spellings of a reserved key - and
+maps like that are real, every write from 2.8.0 and earlier kept evoq's atom
+stamp beside a caller's binary copy - read back whichever the fold reached
+last. The atom wins now, as it does on the write side, and the losing spelling
+is dropped rather than left beside it: one key, one answer. Tested on a
+two-key map and on a 64-key one.
+
+`read_by_metadata/3`'s documentation said an application key can be queried
+with whichever spelling it was written as. That is wrong: the store's query
+takes a BINARY key, so an app key written as an atom is stored under the atom
+and cannot be found by this function at all - an atom key is a `function_clause`
+in the gateway worker, not an empty result. The contract is stated in the
+`@doc` and the README now: write the keys you intend to query as binaries.
+
+### Fixed: a caller could overwrite evoq's own lineage stamp
+
+A metadata map carrying BOTH spellings of a reserved key - the atom evoq
+stamped and the binary form a caller sent - kept whichever the fold reached
+last, which for the small maps this happens with is the binary one: the
+caller's value silently replaced the `causation_id` or `correlation_id` the
+framework had just recorded, and only for callers that sent one. The atom
+spelling wins now, and a map with both ends up with exactly one entry per
+reserved key. `evoq_aggregate:execute_command/2` - which merges a command's
+metadata with the ids it now mints itself - was one way to reach it. Covered
+for a two-key map and for a map with 64 other keys.
+
+### Docs
+
+`evoq_dispatcher` -> `evoq_router`; the `tags` subscription type;
+`#subscription{}` -> `#evoq_subscription{}`; `ack/4` returns
+`ok | {error, Reason}`; `read_by_metadata/3` documents what it matches on -
+the store's BINARY keys, which for the three reserved lineage keys means
+asking for `<<"causation_id">>`, while an application's own keys are stored
+as the application wrote them; and `save/5` says what it is - the gateway
+records a snapshot on a `route_cast`, so a returned `ok` is not proof it
+landed.
+
 ## [2.8.0] - 2026-10-19
 
 ### Added: new_stream_id/1, so evoq can mint a stream id through the adapter

@@ -86,7 +86,7 @@ The adapter requires an reckon-db cluster to be available. Gateway workers autom
 Command = evoq_command:new(deposit, bank_account, <<"acc-123">>, #{amount => 100}),
 
 %% Dispatch through evoq (uses this adapter internally)
-ok = evoq_dispatcher:dispatch(Command).
+{ok, Version, Events} = evoq_router:dispatch(Command).
 ```
 
 ## API Reference
@@ -157,7 +157,12 @@ reckon_evoq_adapter:read_by_tags(StoreId, Tags, Match, BatchSize).
 %% Tags: [binary()]  Match: any | all  BatchSize: pos_integer()
 %% Returns: {ok, [Event]} | {error, Reason}
 
-%% Read events whose metadata Key equals Value
+%% Read events whose metadata Key equals Value. The match is on what the
+%% store holds, and that is a BINARY key: the adapter renames the three
+%% reserved lineage keys (causation_id, correlation_id, conversation_id) to
+%% their binary spelling, so ask for <<"causation_id">>; your own metadata
+%% keys are stored exactly as you appended them, so ask with that spelling.
+%% The wrong spelling answers {ok, []}.
 reckon_evoq_adapter:read_by_metadata(StoreId, Key, Value).
 %% Returns: {ok, [Event]} | {error, Reason}
 ```
@@ -168,6 +173,11 @@ reckon_evoq_adapter:read_by_metadata(StoreId, Key, Value).
 %% Save a snapshot
 reckon_evoq_adapter:save(StoreId, StreamId, Version, Data, Metadata).
 %% Returns: ok | {error, Reason}
+%%
+%% This one is fire-and-forget: the gateway records the snapshot on a
+%% route_cast, so a rejected write is not reported back here. A snapshot is
+%% an optimisation (the events are still the truth), and gater's design
+%% makes it a cast; do not treat a returned ok as proof the snapshot landed.
 
 %% Read latest snapshot
 reckon_evoq_adapter:read(StoreId, StreamId).
@@ -200,16 +210,18 @@ reckon_evoq_adapter:list_versions(StoreId, StreamId).
 ```erlang
 %% Subscribe to events
 reckon_evoq_adapter:subscribe(StoreId, Type, Selector, Name, Opts).
-%% Type: stream | event_type | event_pattern | event_payload
+%% Type: stream | event_type | event_pattern | event_payload | tags
 %% Returns: {ok, SubscriptionId} | {error, Reason}
 
 %% Unsubscribe
 reckon_evoq_adapter:unsubscribe(StoreId, SubscriptionId).
 %% Returns: ok | {error, Reason}
 
-%% Acknowledge event
+%% Acknowledge event. Position is the subscription's position, not the
+%% stream's. A failed ack is returned rather than swallowed; the caller
+%% decides whether to log it.
 reckon_evoq_adapter:ack(StoreId, SubscriptionName, StreamId, Position).
-%% Returns: ok
+%% Returns: ok | {error, Reason}
 
 %% Get checkpoint (subscription position)
 reckon_evoq_adapter:get_checkpoint(StoreId, SubscriptionName).
@@ -217,11 +229,11 @@ reckon_evoq_adapter:get_checkpoint(StoreId, SubscriptionName).
 
 %% List all subscriptions
 reckon_evoq_adapter:list(StoreId).
-%% Returns: {ok, [#subscription{}]} | {error, Reason}
+%% Returns: {ok, [#evoq_subscription{}]} | {error, Reason}
 
 %% Get subscription by name
 reckon_evoq_adapter:get_by_name(StoreId, SubscriptionName).
-%% Returns: {ok, #subscription{}} | {error, not_found}
+%% Returns: {ok, #evoq_subscription{}} | {error, not_found}
 ```
 
 ### Checkpoint Store

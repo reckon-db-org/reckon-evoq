@@ -1,13 +1,12 @@
 # Known dialyzer findings, recorded as a ratchet. See scripts/dialyzer_ratchet.sh.
-# dialyzer reported 30 when this was written (files for lint, warnings for dialyzer).
+# dialyzer reported 29 when this was written (files for lint, warnings for dialyzer).
 # A new finding fails CI. A fixed finding should have its line deleted here.
 src/reckon_evoq_adapter.erl	013b62be0b6e	Type specification reckon_evoq_adapter:subscription_type_to_gater(evoq_subscription_type()) -> atom() is a sup
 src/reckon_evoq_adapter.erl	098c0ca3a238	The specification for reckon_evoq_adapter:delete_at_version/3 states that the function might also return {'err
 src/reckon_evoq_adapter.erl	29bc6006b154	The pattern {'ok', 'ok'} can never match the type {'error',_}
 src/reckon_evoq_adapter.erl	2f228d0d37d5	The pattern {'ok', Error = {'error', _}} can never match the type {'error',_}
 src/reckon_evoq_adapter.erl	31e4f99d4452	The specification for reckon_evoq_adapter:unsubscribe/2 states that the function might also return 'ok' but th
-src/reckon_evoq_adapter.erl	450ea474fbce	Expression produces a value of type {'error',_}, but this value is unmatched
-src/reckon_evoq_adapter.erl	4ad4ae01169c	The specification for reckon_evoq_adapter:ack/4 states that the function might also return {'error',_} but the
+src/reckon_evoq_adapter.erl	52f4c47fb1ef	The pattern <_Success, _StoreId, _SubscriptionName, _Position> can never match since previous clauses complete
 src/reckon_evoq_adapter.erl	64e13944045d	The pattern {'ok', {'ok', Events}} can never match the type {'error',_} | {'ok',[any()]}
 src/reckon_evoq_adapter.erl	64e13944045d	The pattern {'ok', {'ok', Events}} can never match the type {'error',_} | {'ok',[any()]}
 src/reckon_evoq_adapter.erl	64e13944045d	The pattern {'ok', {'ok', Events}} can never match the type {'error',_} | {'ok',[any()]}
@@ -16,7 +15,7 @@ src/reckon_evoq_adapter.erl	658dc5eaee4f	The pattern {'ok', {'ok', Events}} can 
 src/reckon_evoq_adapter.erl	674262895ada	The pattern {'ok', {Type, Selector, Name}} can never match the type {'error','invalid_id'}
 src/reckon_evoq_adapter.erl	6a4a261797c2	Type specification reckon_evoq_adapter:append_if_no_tag_matches(atom(),term(),integer(),[map()]) -> {'ok',non_
 src/reckon_evoq_adapter.erl	708b4194601b	The pattern {'ok', {'ok', SubMap}} can never match the type {'error',_} | {'ok',map()}
-src/reckon_evoq_adapter.erl	9d7bad15ef02	The specification for reckon_evoq_adapter:subscribe/5 states that the function might also return {'error',_} b
+src/reckon_evoq_adapter.erl	82b198667f36	The specification for reckon_evoq_adapter:ack/4 states that the function might also return 'ok' but the inferr
 src/reckon_evoq_adapter.erl	a0d9e6203c1c	The specification for reckon_evoq_adapter:delete/2 states that the function might also return {'error',_} but 
 src/reckon_evoq_adapter.erl	aadbff993aa9	The pattern 'ok' can never match the type {'error',_}
 src/reckon_evoq_adapter.erl	c92dae67fadd	The pattern {'ok', {'ok', Keys}} can never match the type {'error',_} | {'ok',[binary()]}
