@@ -166,8 +166,9 @@ reckon_evoq_adapter:read_by_tags(StoreId, Tags, Match, BatchSize).
 %%   - your own keys are stored exactly as you appended them, so an atom
 %%     appended as an atom is stored under the atom and cannot be found
 %%     here. Write the keys you intend to query as binaries.
-%% A non-binary Key is refused with {error, {invalid_metadata_key, Key}}
-%% rather than reaching the store.
+%% A non-binary Key or Value is refused here with
+%% {error, {invalid_metadata_key, Key}} or
+%% {error, {invalid_metadata_value, Value}} rather than reaching the store.
 reckon_evoq_adapter:read_by_metadata(StoreId, Key, Value).
 %% Returns: {ok, [Event]} | {error, Reason}
 ```

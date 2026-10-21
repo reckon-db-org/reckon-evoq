@@ -91,8 +91,9 @@ A non-binary key or value is answered here as
 used to reach the store's callback, which had no clause for it: the gateway
 worker died on the `function_clause`, the gateway read the exit as transient,
 and the caller waited out ten retries - about 89 seconds - for an answer it
-could have had at once. reckon-gater treats both errors as permanent in its
-next release, so the answer arrives on the first call.
+could have had at once. No gateway call is made for a refused query, so the
+answer is the first call's: reckon-gater never sees these errors from this
+path.
 
 ### Fixed: a caller could overwrite evoq's own lineage stamp
 

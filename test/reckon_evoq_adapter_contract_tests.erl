@@ -234,15 +234,29 @@ an_unknown_start_from_is_refused_test() ->
 %% gateway read the exit as transient, and the caller waited out ten retries
 %% - about 89 seconds - for an answer it could have had at once.
 a_non_binary_metadata_query_is_refused_at_once_test_() ->
-    [?_assertEqual({error, {invalid_metadata_key, causation_id}},
-                   reckon_evoq_adapter:read_by_metadata(?STORE, causation_id,
-                                                        <<"cmd-1">>)),
-     ?_assertEqual({error, {invalid_metadata_key, "causation_id"}},
-                   reckon_evoq_adapter:read_by_metadata(?STORE, "causation_id",
-                                                        <<"cmd-1">>)),
-     ?_assertEqual({error, {invalid_metadata_value, 42}},
-                   reckon_evoq_adapter:read_by_metadata(?STORE, <<"causation_id">>,
-                                                        42))].
+    {setup,
+     fun() ->
+             meck:new(reckon_gater_api, [passthrough]),
+             %% If anything reaches the gateway the test fails loudly here,
+             %% rather than by luck of an unconfigured mock.
+             meck:expect(reckon_gater_api, read_by_metadata,
+                         fun(_S, _K, _V) -> {error, the_gateway_was_called} end)
+     end,
+     fun(_) -> meck:unload(reckon_gater_api) end,
+     fun(_) ->
+             [?_assertEqual({error, {invalid_metadata_key, causation_id}},
+                            reckon_evoq_adapter:read_by_metadata(
+                              ?STORE, causation_id, <<"cmd-1">>)),
+              ?_assertEqual({error, {invalid_metadata_key, "causation_id"}},
+                            reckon_evoq_adapter:read_by_metadata(
+                              ?STORE, "causation_id", <<"cmd-1">>)),
+              ?_assertEqual({error, {invalid_metadata_value, 42}},
+                            reckon_evoq_adapter:read_by_metadata(
+                              ?STORE, <<"causation_id">>, 42)),
+              %% None of the three reached the gateway.
+              ?_assertEqual(0, meck:num_calls(reckon_gater_api,
+                                              read_by_metadata, 3))]
+     end}.
 
 %%====================================================================
 %% start_from

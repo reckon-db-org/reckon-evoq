@@ -284,20 +284,25 @@ read_by_tags(StoreId, Tags, Match, BatchSize) ->
 %% gateway read the exit as transient, and the caller waited out ten retries
 %% - about 89 seconds - for an answer it could have had at once.
 -spec read_by_metadata(atom(), binary(), binary()) ->
-    {ok, [evoq_event()]} |
-    {error, {invalid_metadata_key | invalid_metadata_value, term()}} |
-    {error, term()}.
+    {ok, [evoq_event()]} | {error, term()}.
 read_by_metadata(StoreId, Key, Value) ->
     case metadata_query(Key, Value) of
         ok ->
-            case reckon_gater_api:read_by_metadata(StoreId, Key, Value) of
-                {ok, {ok, Events}} when is_list(Events) ->
-                    {ok, events_to_evoq(Events)};
-                {ok, Events} when is_list(Events) ->
-                    {ok, events_to_evoq(Events)};
-                {error, _} = Error ->
-                    Error
-            end;
+            read_metadata_matches(StoreId, Key, Value);
+        {error, _} = Error ->
+            Error
+    end.
+
+%% @private The gateway's answer. It carries the store's result, which is
+%% either a list or an {ok, List}; anything else is the caller's error.
+-spec read_metadata_matches(atom(), binary(), binary()) ->
+    {ok, [evoq_event()]} | {error, term()}.
+read_metadata_matches(StoreId, Key, Value) ->
+    case reckon_gater_api:read_by_metadata(StoreId, Key, Value) of
+        {ok, {ok, Events}} when is_list(Events) ->
+            {ok, events_to_evoq(Events)};
+        {ok, Events} when is_list(Events) ->
+            {ok, events_to_evoq(Events)};
         {error, _} = Error ->
             Error
     end.
