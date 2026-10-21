@@ -142,8 +142,13 @@ lineage_keys_come_back_as_atoms_test() ->
 
 %% The read side has the same precedence as the write side: a stored map
 %% with BOTH spellings of a reserved key reads back the ATOM, whatever the
-%% fold order. Maps like that are real - every write from 2.8.0 and earlier
-%% kept evoq's atom stamp beside a caller's binary copy.
+%% fold order. Maps like that are real: a write whose command metadata
+%% carried a binary copy of the key, which 2.8.0 and earlier kept beside
+%% evoq's atom stamp.
+%%
+%% The 64-key half is a guard, not the evidence: a hashmap's fold order
+%% varies between VM instances, so on the previous code (3a1f453) it was red
+%% in 1 of 9 runs. The two-key half is the deterministic red.
 a_stored_map_with_both_spellings_reads_the_atom_test_() ->
     [?_test(both_spellings_read_the_atom(M)) || M <- [small_stored_map(),
                                                       large_stored_map()]].
@@ -222,6 +227,22 @@ an_unknown_start_from_is_refused_test() ->
                      reckon_evoq_adapter:subscribe(?STORE, stream, <<"s">>, <<"sub">>,
                                                    #{start_from => <<"tomorrow">>}))
     end).
+
+%% A query key or value that is not a binary is answered here, before the
+%% gateway is called. It used to reach the store's callback and take the
+%% gateway worker with it: the worker had no clause for an atom key, the
+%% gateway read the exit as transient, and the caller waited out ten retries
+%% - about 89 seconds - for an answer it could have had at once.
+a_non_binary_metadata_query_is_refused_at_once_test_() ->
+    [?_assertEqual({error, {invalid_metadata_key, causation_id}},
+                   reckon_evoq_adapter:read_by_metadata(?STORE, causation_id,
+                                                        <<"cmd-1">>)),
+     ?_assertEqual({error, {invalid_metadata_key, "causation_id"}},
+                   reckon_evoq_adapter:read_by_metadata(?STORE, "causation_id",
+                                                        <<"cmd-1">>)),
+     ?_assertEqual({error, {invalid_metadata_value, 42}},
+                   reckon_evoq_adapter:read_by_metadata(?STORE, <<"causation_id">>,
+                                                        42))].
 
 %%====================================================================
 %% start_from

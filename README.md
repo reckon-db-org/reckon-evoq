@@ -157,12 +157,17 @@ reckon_evoq_adapter:read_by_tags(StoreId, Tags, Match, BatchSize).
 %% Tags: [binary()]  Match: any | all  BatchSize: pos_integer()
 %% Returns: {ok, [Event]} | {error, Reason}
 
-%% Read events whose metadata Key equals Value. The match is on what the
-%% store holds, and that is a BINARY key: the adapter renames the three
-%% reserved lineage keys (causation_id, correlation_id, conversation_id) to
-%% their binary spelling, so ask for <<"causation_id">>; your own metadata
-%% keys are stored exactly as you appended them, so ask with that spelling.
-%% The wrong spelling answers {ok, []}.
+%% Read events whose metadata Key equals Value. The store keeps metadata
+%% under BINARY keys - that is what its {meta, Key} index matches - so ask
+%% with the binary spelling:
+%%   - the reserved lineage keys (causation_id, correlation_id,
+%%     conversation_id) are written as binaries by this adapter, so ask for
+%%     <<"causation_id">>;
+%%   - your own keys are stored exactly as you appended them, so an atom
+%%     appended as an atom is stored under the atom and cannot be found
+%%     here. Write the keys you intend to query as binaries.
+%% A non-binary Key is refused with {error, {invalid_metadata_key, Key}}
+%% rather than reaching the store.
 reckon_evoq_adapter:read_by_metadata(StoreId, Key, Value).
 %% Returns: {ok, [Event]} | {error, Reason}
 ```

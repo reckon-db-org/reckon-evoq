@@ -275,20 +275,44 @@ read_by_tags(StoreId, Tags, Match, BatchSize) ->
 %% so ask for the binary "causation_id". An application's own metadata keys
 %% are stored exactly as the application wrote them, and the store's query
 %% takes a binary key only: an app key written as an atom is stored under the
-%% atom and CANNOT be found by this function at all - an atom Key is a
-%% function_clause in the gateway worker, not an empty result. Write the keys
-%% you intend to query as binaries.
+%% atom and CANNOT be found by this function at all. Write the keys you
+%% intend to query as binaries.
+%%
+%% A non-binary Key or Value answers {error, {invalid_metadata_key, K}} or
+%% {error, {invalid_metadata_value, V}} without reaching the store, which
+%% used to be a function_clause in the gateway worker: the worker died, the
+%% gateway read the exit as transient, and the caller waited out ten retries
+%% - about 89 seconds - for an answer it could have had at once.
 -spec read_by_metadata(atom(), binary(), binary()) ->
-    {ok, [evoq_event()]} | {error, term()}.
+    {ok, [evoq_event()]} |
+    {error, {invalid_metadata_key | invalid_metadata_value, term()}} |
+    {error, term()}.
 read_by_metadata(StoreId, Key, Value) ->
-    case reckon_gater_api:read_by_metadata(StoreId, Key, Value) of
-        {ok, {ok, Events}} when is_list(Events) ->
-            {ok, events_to_evoq(Events)};
-        {ok, Events} when is_list(Events) ->
-            {ok, events_to_evoq(Events)};
+    case metadata_query(Key, Value) of
+        ok ->
+            case reckon_gater_api:read_by_metadata(StoreId, Key, Value) of
+                {ok, {ok, Events}} when is_list(Events) ->
+                    {ok, events_to_evoq(Events)};
+                {ok, Events} when is_list(Events) ->
+                    {ok, events_to_evoq(Events)};
+                {error, _} = Error ->
+                    Error
+            end;
         {error, _} = Error ->
             Error
     end.
+
+%% @private The store's metadata query takes binaries, and the gateway worker
+%% has no error channel for anything else: an atom reached the callback and
+%% crashed the worker. Refuse it here, where it is a plain answer.
+-spec metadata_query(term(), term()) -> ok |
+    {error, {invalid_metadata_key | invalid_metadata_value, term()}}.
+metadata_query(Key, _Value) when not is_binary(Key) ->
+    {error, {invalid_metadata_key, Key}};
+metadata_query(_Key, Value) when not is_binary(Value) ->
+    {error, {invalid_metadata_value, Value}};
+metadata_query(_Key, _Value) ->
+    ok.
 
 %% @doc Read DCB events whose payload field Key equals Value (CCC).
 %%
@@ -730,10 +754,11 @@ subscription_type_to_gater(tags) -> by_tags.
 %%
 %% The same precedence as the write side, for the same reason: when a stored
 %% map carries BOTH spellings of a reserved key the ATOM wins, because the
-%% atom is what evoq stamped (a map written by 2.8.0 or earlier has exactly
-%% that pair, and the binary is the caller's copy). A fold would let map
-%% order decide, which for a small map means the binary - the caller's value
-%% - and that is the lineage the framework recorded being replaced.
+%% atom is what evoq stamped and the binary is the caller's copy - the pair
+%% exists where a command's metadata carried a binary copy of the key, which
+%% 2.8.0 and earlier stored beside the stamp. A fold would let map order
+%% decide, which for a small map means the binary - the caller's value - and
+%% that is the lineage the framework recorded being replaced.
 -spec restore_reserved_keys(map()) -> map().
 restore_reserved_keys(Metadata) when is_map(Metadata) ->
     %% Both spellings out, the winner back in: leaving the binary beside the
@@ -745,6 +770,7 @@ restore_reserved_keys(Metadata) when is_map(Metadata) ->
                 Base, ?RESERVED_LINEAGE_KEYS).
 
 %% @private
+-spec restore_one(atom(), map(), map()) -> map().
 restore_one(Key, Metadata, Acc) ->
     case {maps:find(Key, Metadata), maps:find(reserved_key_binary(Key), Metadata)} of
         {{ok, Value}, _} -> Acc#{Key => Value};
@@ -758,10 +784,10 @@ restore_one(Key, Metadata, Acc) ->
 %% binary spelling - that is what the {meta, Key} index matches, and what
 %% evoq_to_reckon_event/1 writes - but an event delivered inside the BEAM is
 %% read by evoq code and by the guides, both of which spell the reserved keys
-%% as atoms (evoq.hrl defines them). evoq_lineage handles either; a handler
-%% matching #{correlation_id := C} does not. So the closed set evoq defines
-%% is translated on the way in, and every other key is left exactly as the
-%% store holds it.
+%% as atoms. evoq_lineage handles either; a handler matching
+%% #{correlation_id := C} does not. So the three keys evoq's lineage stamps,
+%% held here as ?RESERVED_LINEAGE_KEYS, are translated on the way in, and
+%% every other key is left exactly as the store holds it.
 -spec event_to_evoq(event()) -> evoq_event().
 event_to_evoq(#event{
     event_id = EventId,
@@ -844,6 +870,7 @@ binary_keys(Map) ->
                 Base, ?RESERVED_LINEAGE_KEYS).
 
 %% @private
+-spec put_reserved_binary(atom(), map(), map()) -> map().
 put_reserved_binary(Key, Map, Acc) ->
     case maps:find(Key, Map) of
         {ok, Value} -> Acc#{reserved_key_binary(Key) => Value};
@@ -851,6 +878,9 @@ put_reserved_binary(Key, Map, Acc) ->
     end.
 
 %% @private
+%%
+%% No -spec on purpose: the three clauses answer three literals, and a
+%% binary() spec is a supertype of that, which the dialyzer ratchet reports.
 reserved_key_binary(causation_id) -> <<"causation_id">>;
 reserved_key_binary(correlation_id) -> <<"correlation_id">>;
 reserved_key_binary(conversation_id) -> <<"conversation_id">>.

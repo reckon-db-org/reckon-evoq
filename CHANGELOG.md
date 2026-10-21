@@ -18,11 +18,11 @@ passed the map through unchanged, so the index matched nothing and
 `evoq_lineage:get_effects/2` and `get_correlated/2` always answered `[]`.
 
 The adapter now rewrites **the reserved lineage keys and nothing else**
-(`causation_id`, `correlation_id`, `conversation_id` - the closed set
-`evoq.hrl` defines) to their binary spelling on append. Values are
-untouched, `data` is untouched, and a map that is already binary-keyed is
-passed through as it was. Events already in the store keep their atom keys
-and stay unqueryable; only new appends are indexed.
+(`causation_id`, `correlation_id`, `conversation_id` - the set evoq's lineage
+stamps, held in the adapter's own `?RESERVED_LINEAGE_KEYS`) to their binary
+spelling on append. Values are untouched, `data` is untouched, and a map that
+is already binary-keyed is passed through as it was. Events already in the
+store keep their atom keys and stay unqueryable; only new appends are indexed.
 
 **On the way back in, those same three keys are atoms again.** Without that
 the delivered metadata would depend on when an event was written: atom keys
@@ -70,18 +70,29 @@ ack, and two warnings for one failure hide the next one.
 ### Fixed: the read side had the same overwrite, in reverse
 
 A stored metadata map that carries both spellings of a reserved key - and
-maps like that are real, every write from 2.8.0 and earlier kept evoq's atom
-stamp beside a caller's binary copy - read back whichever the fold reached
-last. The atom wins now, as it does on the write side, and the losing spelling
-is dropped rather than left beside it: one key, one answer. Tested on a
-two-key map and on a 64-key one.
+maps like that are real: a write whose command metadata carried a binary copy
+of the key, which 2.8.0 and earlier kept beside evoq's atom stamp - read back
+whichever the fold reached last. The atom wins now, as it does on the write
+side, and the losing spelling is dropped rather than left beside it: one key,
+one answer. Tested on a two-key map (a flatmap, so the binary always won
+before: the deterministic red) and on a 64-key one, which is a guard - a
+hashmap's fold order varies per VM, and that half was red in 1 of 9 runs on
+the old code.
 
 `read_by_metadata/3`'s documentation said an application key can be queried
 with whichever spelling it was written as. That is wrong: the store's query
 takes a BINARY key, so an app key written as an atom is stored under the atom
-and cannot be found by this function at all - an atom key is a `function_clause`
-in the gateway worker, not an empty result. The contract is stated in the
+and cannot be found by this function at all. The contract is stated in the
 `@doc` and the README now: write the keys you intend to query as binaries.
+
+A non-binary key or value is answered here as
+`{error, {invalid_metadata_key, Key}}` or
+`{error, {invalid_metadata_value, Value}}`, before the gateway is called. It
+used to reach the store's callback, which had no clause for it: the gateway
+worker died on the `function_clause`, the gateway read the exit as transient,
+and the caller waited out ten retries - about 89 seconds - for an answer it
+could have had at once. reckon-gater treats both errors as permanent in its
+next release, so the answer arrives on the first call.
 
 ### Fixed: a caller could overwrite evoq's own lineage stamp
 
