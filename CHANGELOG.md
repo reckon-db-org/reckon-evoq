@@ -37,8 +37,9 @@ word:
   seal protected nothing on this path. `read/2` now asks the store for the
   latest (`read_snapshot` at version 0, reckon-db's verifying `load/2`), so
   a snapshot that fails comes back as `{error, {integrity_violation, _}}`.
-  With reckon-gater 3.15.1+ that refusal arrives at once; 3.15.0 retries it
-  and answers `{retries_exhausted, _}` after the backoff.
+  It needs reckon-gater 3.15.1, which no longer retries that refusal (3.15.0
+  answered `{retries_exhausted, _}` after the whole backoff), so the floor is
+  `~> 3.15 and >= 3.15.1`.
 
 On a store with integrity on, a tampered snapshot also refuses the list a
 save prunes from and a reset removes from (reckon-db 5.11.14 verifies every
@@ -48,7 +49,7 @@ closed, never a checkpoint read past it.
 The stream id changes, so a checkpoint saved under the old
 `projection-checkpoint-<projection>` id is not read: each projection
 replays once from the start after the upgrade. The reckon-gater floor is
-now 3.15.
+now 3.15.1 (`~> 3.15 and >= 3.15.1`).
 
 ## [2.9.0] - 2026-10-21
 
