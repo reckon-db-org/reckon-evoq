@@ -5,6 +5,36 @@ All notable changes to reckon-evoq will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.0] - unreleased
+
+### Fixed: a projection checkpoint is kept, and one that is not says so (reckon-evoq#1)
+
+`reckon_evoq_checkpoint_store` had three faults, each making a projection
+replay from the start on boot, or skip events after a rebuild, without a
+word:
+
+- **One snapshot per event, and the oldest could win.** Every save added a
+  snapshot, and a reset to -1 left the old ones in place, so after a rebuild
+  the checkpoint from before it outranked every one the rebuild saved. A
+  stream now holds one snapshot, at a version equal to the checkpoint: a
+  save records the new one and removes the others, and the reset to -1
+  removes them all. Load reads the highest version, which is the last save.
+- **Fire and forget.** `record_snapshot` and `delete_snapshot` are casts,
+  so save/2 answered `ok` for a write the store refused. It now uses
+  reckon-gater 3.15.0's `record_snapshot_sync` and `delete_snapshot_sync`
+  and returns their errors; a reset whose snapshots cannot be listed returns
+  that error instead of `ok`.
+- **Never persisted on an integrity store.** The checkpoint lived on a user
+  stream with no events, which an integrity store cannot anchor a snapshot
+  to, so it refused every checkpoint. The stream is now the system stream
+  `$evoq-checkpoint:<projection>`, which reckon-db 5.11.14+ seals with a
+  store-bound MAC and no anchor (reckon-db#25).
+
+The stream id changes, so a checkpoint saved under the old
+`projection-checkpoint-<projection>` id is not read: each projection
+replays once from the start after the upgrade. The reckon-gater floor is
+now 3.15.
+
 ## [2.9.0] - 2026-10-21
 
 ### Changed: lineage metadata is binary on the wire and atom-keyed in the BEAM (evoq#22)
