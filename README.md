@@ -82,8 +82,12 @@ The adapter requires an reckon-db cluster to be available. Gateway workers autom
 ### 3. Use evoq normally
 
 ```erlang
-%% Create a command
-Command = evoq_command:new(deposit, bank_account, <<"acc-123">>, #{amount => 100}),
+%% Create a command. The aggregate id is the id of the stream its events
+%% are stored in, so it must be a valid stream id: <prefix>-<32 hex>.
+%% reckon_gater_stream_id:new(account) makes one. The rule:
+%% https://hexdocs.pm/reckon_gater/stream_ids.html
+AccountId = <<"account-018f6a7b8c9d4e5f60718293a4b5c6d8">>,
+Command = evoq_command:new(deposit, bank_account, AccountId, #{amount => 100}),
 
 %% Dispatch through evoq (uses this adapter internally)
 {ok, Version, Events} = evoq_router:dispatch(Command).
