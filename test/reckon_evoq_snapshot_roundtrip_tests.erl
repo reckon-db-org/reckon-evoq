@@ -34,7 +34,8 @@ snapshot_roundtrip_test_() ->
       {"the gateway's map shape", fun latest_map_shape/0},
       {"the gateway's map shape, written before reckon-db 5.5.2", fun latest_legacy_map_shape/0},
       {"binary data", fun binary_data/0},
-      {"the known collision: user data shaped like the wrapper", fun wrapper_shaped_user_data/0}]}.
+      {"the known collision: user data shaped like the wrapper", fun wrapper_shaped_user_data/0},
+      {"a snapshot the store refuses is not read", fun a_refused_snapshot_is_not_read/0}]}.
 
 %% What reckon_db_gateway_worker stores since 5.5.2: data and metadata in
 %% their own fields.
@@ -49,7 +50,7 @@ legacy() ->
               metadata = #{}, timestamp = 1700000000000}.
 
 latest_current_shape() ->
-    meck:expect(reckon_gater_api, list_snapshots, fun(_, _, _) -> {ok, [current()]} end),
+    meck:expect(reckon_gater_api, read_snapshot, fun(_, _, _, 0) -> {ok, current()} end),
     assert_roundtrip(reckon_evoq_adapter:read(?STORE, ?STREAM)).
 
 at_version_current_shape() ->
@@ -57,7 +58,7 @@ at_version_current_shape() ->
     assert_roundtrip(reckon_evoq_adapter:read_at_version(?STORE, ?STREAM, 1)).
 
 latest_legacy_shape() ->
-    meck:expect(reckon_gater_api, list_snapshots, fun(_, _, _) -> {ok, [legacy()]} end),
+    meck:expect(reckon_gater_api, read_snapshot, fun(_, _, _, 0) -> {ok, legacy()} end),
     assert_roundtrip(reckon_evoq_adapter:read(?STORE, ?STREAM)).
 
 at_version_legacy_shape() ->
@@ -66,19 +67,19 @@ at_version_legacy_shape() ->
 
 latest_map_shape() ->
     Map = #{version => 1, data => ?DATA, metadata => ?META, timestamp => 1700000000000},
-    meck:expect(reckon_gater_api, list_snapshots, fun(_, _, _) -> {ok, [Map]} end),
+    meck:expect(reckon_gater_api, read_snapshot, fun(_, _, _, 0) -> {ok, Map} end),
     assert_roundtrip(reckon_evoq_adapter:read(?STORE, ?STREAM)).
 
 latest_legacy_map_shape() ->
     Map = #{version => 1, metadata => #{}, timestamp => 1700000000000,
             data => #{data => ?DATA, metadata => ?META, timestamp => 1700000000000}},
-    meck:expect(reckon_gater_api, list_snapshots, fun(_, _, _) -> {ok, [Map]} end),
+    meck:expect(reckon_gater_api, read_snapshot, fun(_, _, _, 0) -> {ok, Map} end),
     assert_roundtrip(reckon_evoq_adapter:read(?STORE, ?STREAM)).
 
 %% The record allows binary data; the read crashed on it with function_clause.
 binary_data() ->
     Snap = (current())#snapshot{data = <<"opaque">>},
-    meck:expect(reckon_gater_api, list_snapshots, fun(_, _, _) -> {ok, [Snap]} end),
+    meck:expect(reckon_gater_api, read_snapshot, fun(_, _, _, 0) -> {ok, Snap} end),
     {ok, S} = reckon_evoq_adapter:read(?STORE, ?STREAM),
     ?assertEqual(<<"opaque">>, S#evoq_snapshot.data).
 
@@ -89,7 +90,7 @@ binary_data() ->
 wrapper_shaped_user_data() ->
     UserData = #{data => inner, metadata => #{m => 1}, timestamp => 5},
     Snap = (current())#snapshot{data = UserData},
-    meck:expect(reckon_gater_api, list_snapshots, fun(_, _, _) -> {ok, [Snap]} end),
+    meck:expect(reckon_gater_api, read_snapshot, fun(_, _, _, 0) -> {ok, Snap} end),
     {ok, S} = reckon_evoq_adapter:read(?STORE, ?STREAM),
     ?assertEqual(inner, S#evoq_snapshot.data).
 
@@ -99,3 +100,12 @@ assert_roundtrip({ok, #evoq_snapshot{} = S}) ->
     ?assertEqual(?DATA, S#evoq_snapshot.data),
     ?assertEqual(?META, S#evoq_snapshot.metadata),
     ?assertEqual(1700000000000, S#evoq_snapshot.timestamp).
+
+%% The latest snapshot is the store's verified answer (read_snapshot at 0,
+%% reckon-db's load/2), never a pick from the raw list: an aggregate is not
+%% rebuilt from a snapshot that fails its integrity check.
+a_refused_snapshot_is_not_read() ->
+    Refusal = {error, {integrity_violation, #{reason => snapshot_mac_mismatch}}},
+    meck:expect(reckon_gater_api, read_snapshot, fun(_, _, _, 0) -> Refusal end),
+    meck:expect(reckon_gater_api, list_snapshots, fun(_, _, _) -> {ok, [current()]} end),
+    ?assertEqual(Refusal, reckon_evoq_adapter:read(?STORE, ?STREAM)).

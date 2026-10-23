@@ -34,12 +34,13 @@ checkpoint_store_test_() ->
         fun save_records_snapshot/0,
         fun load_returns_checkpoint/0,
         fun load_returns_not_found_when_empty/0,
-        fun load_finds_latest_version/0,
+        fun load_asks_the_store_for_the_latest/0,
         fun load_reads_a_checkpoint_saved_before_reckon_db_5_5_2/0,
         fun delete_removes_all_snapshots/0,
         fun delete_reports_a_store_that_cannot_list/0,
         fun an_integrity_store_refusal_reaches_the_caller/0,
         fun a_failed_prune_is_reported/0,
+        fun a_checkpoint_failing_verification_is_not_returned/0,
         fun stream_id_includes_projection_name/0,
         fun uses_configured_store_id/0
     ]}.
@@ -71,38 +72,36 @@ save_records_snapshot() ->
     ?assert(meck:validate(reckon_gater_api)).
 
 load_returns_checkpoint() ->
-    meck:expect(reckon_gater_api, list_snapshots,
-        fun(test_store, _SourceId, _StreamId) ->
-            {ok, [snap(100, #{checkpoint => 100})]}
+    meck:expect(reckon_gater_api, read_snapshot,
+        fun(test_store, _SourceId, _StreamId, 0) ->
+            {ok, snap(100, #{checkpoint => 100})}
         end),
     ?assertEqual({ok, 100}, reckon_evoq_checkpoint_store:load(my_projection)),
     ?assert(meck:validate(reckon_gater_api)).
 
 load_returns_not_found_when_empty() ->
-    meck:expect(reckon_gater_api, list_snapshots,
-        fun(test_store, _SourceId, _StreamId) ->
-            {ok, []}
+    meck:expect(reckon_gater_api, read_snapshot,
+        fun(test_store, _SourceId, _StreamId, 0) ->
+            {error, not_found}
         end),
     ?assertEqual({error, not_found}, reckon_evoq_checkpoint_store:load(my_projection)),
     ?assert(meck:validate(reckon_gater_api)).
 
-load_finds_latest_version() ->
-    meck:expect(reckon_gater_api, list_snapshots,
-        fun(test_store, _SourceId, _StreamId) ->
-            {ok, [snap(10, #{checkpoint => 10}),
-                  snap(50, #{checkpoint => 50}),
-                  snap(30, #{checkpoint => 30})]}
-        end),
+%% Version 0 is the store's "latest" (reckon-db's load/2, which verifies);
+%% choosing the highest is the store's job, not this module's.
+load_asks_the_store_for_the_latest() ->
+    meck:expect(reckon_gater_api, read_snapshot,
+        fun(test_store, _SourceId, _StreamId, 0) -> {ok, snap(50, #{checkpoint => 50})} end),
     ?assertEqual({ok, 50}, reckon_evoq_checkpoint_store:load(my_projection)),
     ?assert(meck:validate(reckon_gater_api)).
 
 %% A checkpoint written before reckon-db 5.5.2: the whole save/2 wrapper sits
 %% in the record's data field.
 load_reads_a_checkpoint_saved_before_reckon_db_5_5_2() ->
-    meck:expect(reckon_gater_api, list_snapshots,
-        fun(test_store, _SourceId, _StreamId) ->
-            {ok, [snap(7, #{data => #{checkpoint => 7}, metadata => #{saved_at => 1},
-                            timestamp => 1})]}
+    meck:expect(reckon_gater_api, read_snapshot,
+        fun(test_store, _SourceId, _StreamId, 0) ->
+            {ok, snap(7, #{data => #{checkpoint => 7}, metadata => #{saved_at => 1},
+                           timestamp => 1})}
         end),
     ?assertEqual({ok, 7}, reckon_evoq_checkpoint_store:load(my_projection)).
 
@@ -155,23 +154,37 @@ a_failed_prune_is_reported() ->
         fun(test_store, _SourceId, _StreamId, 41) -> {error, timeout} end),
     ?assertEqual({error, timeout}, reckon_evoq_checkpoint_store:save(my_projection, 42)).
 
-stream_id_includes_projection_name() ->
+%% reckon-evoq#1 review r1: load/1 listed the snapshots and picked the
+%% highest itself, and the store's list was never verified, so a planted,
+%% raised or unsealed checkpoint was served and the projection resumed past
+%% events it never projected. The store's verified answer for the latest is
+%% what load/1 returns now; the raw list (here, a raised checkpoint) is not
+%% consulted.
+a_checkpoint_failing_verification_is_not_returned() ->
+    Refusal = {error, {integrity_violation, unsealed_system_snapshot}},
+    meck:expect(reckon_gater_api, read_snapshot,
+        fun(test_store, StreamId, StreamId, 0) -> Refusal end),
     meck:expect(reckon_gater_api, list_snapshots,
-        fun(test_store, StreamId, StreamId) ->
+        fun(test_store, _SourceId, _StreamId) -> {ok, [snap(900, #{checkpoint => 900})]} end),
+    ?assertEqual(Refusal, reckon_evoq_checkpoint_store:load(my_projection)).
+
+stream_id_includes_projection_name() ->
+    meck:expect(reckon_gater_api, read_snapshot,
+        fun(test_store, StreamId, StreamId, 0) ->
             ?assertEqual(<<"$evoq-checkpoint:order_summary">>, StreamId),
             %% A system stream: the id reckon-db accepts, and the one an
             %% integrity store seals without an anchor (reckon-db#25).
             ?assert(reckon_gater_stream_id:is_system(StreamId)),
-            {ok, []}
+            {error, not_found}
         end),
     reckon_evoq_checkpoint_store:load(order_summary),
     ?assert(meck:validate(reckon_gater_api)).
 
 uses_configured_store_id() ->
     application:set_env(reckon_evoq, checkpoint_store_id, custom_store),
-    meck:expect(reckon_gater_api, list_snapshots,
-        fun(custom_store, _SourceId, _StreamId) ->
-            {ok, []}
+    meck:expect(reckon_gater_api, read_snapshot,
+        fun(custom_store, _SourceId, _StreamId, 0) ->
+            {error, not_found}
         end),
     reckon_evoq_checkpoint_store:load(my_projection),
     ?assert(meck:validate(reckon_gater_api)),
@@ -216,13 +229,16 @@ stateful_setup() ->
         fun(test_store, Id, Id, Version, #{data := Data}) when is_integer(Version), Version >= 0 ->
                 true = ets:insert(Table, {Version, snap(Version, Data)}),
                 ok;
-           (test_store, _Id, _Id, Version, _Record) ->
+           (test_store, Id, Id, Version, _Record) ->
                 {error, {bad_version, Version}}
         end),
     meck:expect(reckon_gater_api, list_snapshots,
-        fun(test_store, _Id, _Id) -> {ok, [S || {_, S} <- ets:tab2list(Table)]} end),
+        fun(test_store, Id, Id) -> {ok, [S || {_, S} <- ets:tab2list(Table)]} end),
+    %% Version 0 is the latest, as reckon-db's load/2 answers it.
+    meck:expect(reckon_gater_api, read_snapshot,
+        fun(test_store, Id, Id, 0) -> latest_stored(ets:last(Table), Table) end),
     meck:expect(reckon_gater_api, delete_snapshot_sync,
-        fun(test_store, _Id, _Id, Version) -> true = ets:delete(Table, Version), ok end),
+        fun(test_store, Id, Id, Version) -> true = ets:delete(Table, Version), ok end),
     ok.
 
 %% A fresh named table, owned by a process of its own: eunit may run a
@@ -245,6 +261,9 @@ stop_holder(Pid) ->
     MRef = erlang:monitor(process, Pid),
     Pid ! stop,
     receive {'DOWN', MRef, process, Pid, _} -> ok end.
+
+latest_stored('$end_of_table', _Table) -> {error, not_found};
+latest_stored(Version, Table) -> {ok, ets:lookup_element(Table, Version, 2)}.
 
 stored_versions() ->
     [V || {V, _} <- ets:tab2list(?MODULE)].

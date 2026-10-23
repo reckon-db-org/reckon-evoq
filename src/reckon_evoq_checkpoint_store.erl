@@ -40,7 +40,9 @@
 %%====================================================================
 
 %% @doc Load the checkpoint for a projection.
-%% Read through the adapter, which picks the latest snapshot and reads both
+%% Read through the adapter, which asks the store for the latest snapshot
+%% (verified on a store with integrity on: a planted, raised or unsealed
+%% checkpoint comes back as {error, {integrity_violation, _}}) and reads both
 %% what reckon-db 5.5.2+ returns (a #snapshot{} record, data in its own
 %% field) and a checkpoint saved before 5.5.2 (the save/2 wrapper in data).
 %% This read maps:get on the reply directly, which is a record, so it crashed

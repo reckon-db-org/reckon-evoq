@@ -30,6 +30,21 @@ word:
   `$evoq-checkpoint:<projection>`, which reckon-db 5.11.14+ seals with a
   store-bound MAC and no anchor (reckon-db#25).
 
+- **Read unverified.** The checkpoint, and the latest aggregate snapshot
+  through `reckon_evoq_adapter:read/2`, was read by listing the stream's
+  snapshots and picking the highest version here, and reckon-db's list was
+  never verified: a planted, raised or unsealed snapshot was served and the
+  seal protected nothing on this path. `read/2` now asks the store for the
+  latest (`read_snapshot` at version 0, reckon-db's verifying `load/2`), so
+  a snapshot that fails comes back as `{error, {integrity_violation, _}}`.
+  With reckon-gater 3.15.1+ that refusal arrives at once; 3.15.0 retries it
+  and answers `{retries_exhausted, _}` after the backoff.
+
+On a store with integrity on, a tampered snapshot also refuses the list a
+save prunes from and a reset removes from (reckon-db 5.11.14 verifies every
+listed snapshot). Both return that error and leave the store as it is: fail
+closed, never a checkpoint read past it.
+
 The stream id changes, so a checkpoint saved under the old
 `projection-checkpoint-<projection>` id is not read: each projection
 replays once from the start after the upgrade. The reckon-gater floor is

@@ -432,27 +432,19 @@ save(StoreId, StreamId, Version, Data, Metadata) ->
     reckon_gater_api:record_snapshot(StoreId, StreamId, StreamId, Version, SnapshotRecord).
 
 %% @doc Read the latest snapshot via gateway.
+%%
+%% Asks the store for it (read_snapshot at version 0 is the latest, served by
+%% reckon-db's load/2), so a store with integrity on verifies it first and a
+%% snapshot that fails comes back as {error, {integrity_violation, _}}. It
+%% listed the snapshots and picked the highest here, and nothing on that path
+%% verified anything: a planted or raised snapshot was served
+%% (reckon-evoq#1 review r1).
 -spec read(atom(), binary()) ->
     {ok, evoq_snapshot()} | {error, not_found | term()}.
 read(StoreId, StreamId) ->
-    fold_latest(
-        reckon_gater_api:list_snapshots(StoreId, StreamId, StreamId),
-        StreamId).
-
-fold_latest({ok, []}, _StreamId) ->
-    {error, not_found};
-fold_latest({ok, Snapshots}, StreamId) ->
-    Latest = lists:foldl(fun pick_higher_version/2, undefined, Snapshots),
-    {ok, gater_to_evoq_snapshot(StreamId, Latest)};
-fold_latest({error, _} = Error, _StreamId) ->
-    Error.
-
-pick_higher_version(S, undefined) -> S;
-pick_higher_version(S, Acc)       -> higher(S, Acc, snapshot_version(S),
-                                            snapshot_version(Acc)).
-
-higher(S, _Acc, Sv, Av) when Sv > Av -> S;
-higher(_S, Acc, _Sv, _Av)            -> Acc.
+    convert_read_at(
+        reckon_gater_api:read_snapshot(StoreId, StreamId, StreamId, 0),
+        StreamId, 0).
 
 %% @doc Read snapshot at specific version via gateway.
 -spec read_at_version(atom(), binary(), non_neg_integer()) ->
