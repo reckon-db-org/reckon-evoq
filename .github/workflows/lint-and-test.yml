@@ -7,6 +7,7 @@
 #
 #   1. NEVER CACHE `_build', only the hex package cache and dialyzer's PLTs,
 #      because rebar.lock is untracked so a cached build can serve stale deps.
+#      The hex REGISTRY INDEX is not cached either (#5): see the cache step.
 #   2. rebar3 BY DIRECT DOWNLOAD against the sha256 GitHub publishes, because
 #      setup-beam's own rebar3 lookup has failed on the releases pagination cap.
 #
@@ -89,13 +90,37 @@ jobs:
           sudo mv rebar3 /usr/local/bin/rebar3
           rebar3 version
 
-      - name: Cache hex packages and PLTs
+      # ONLY the OTP base PLT and the downloaded tarballs are cached, NEVER
+      # `~/.cache/rebar3/hex/packages.idx'. That file is the hex REGISTRY and the
+      # resolver's only input, and `rebar.lock' is untracked here, so a cached
+      # index froze the version CI resolved while a fresh install moved on. This
+      # repository is the one of the family where that bites TODAY: every runtime
+      # dependency here floats (`evoq ~> 1.22', `reckon_gater ~> 3.15 and
+      # >= 3.15.1', `telemetry ~> 1.3'), so the gate has been testing against the
+      # newest releases the cache happened to know about rather than the newest
+      # that exist (reckon-db#30's defect, filed here as #5).
+      #
+      # What IS cached cannot skew a resolution: the OTP base PLT, keyed by the
+      # OTP version, and `hex/hexpm/packages/<name>-<vsn>.tar', which is keyed by
+      # version and read only AFTER one is chosen. `-freshdeps' in the key is
+      # load-bearing rather than decorative: a restore lays an archive's files
+      # back down wherever the path list now reads, so the entries saved before
+      # this change would carry their packages.idx back in. The suffix abandons
+      # them instead.
+      #
+      # `_build/default/*_plt' stays cached here. It is a separate question with a
+      # precedent against it -- reckon-db removed it because a PLT built against
+      # older deps let the dialyzer ratchet pass while a fresh PLT reported 8
+      # findings (reckon-db#20) -- and dropping it here would surface whatever it
+      # hides, which is its own package.
+      - name: Cache hex tarballs and PLTs
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cache/rebar3
+            ~/.cache/rebar3/rebar3_*_plt
+            ~/.cache/rebar3/hex/hexpm/packages
             _build/default/*_plt
-          key: ${{ runner.os }}-otp-${{ steps.beam.outputs.otp-version }}-${{ hashFiles('rebar.config') }}
+          key: ${{ runner.os }}-otp-${{ steps.beam.outputs.otp-version }}-freshdeps-${{ hashFiles('rebar.config') }}
 
       - name: Compile
         id: compile
